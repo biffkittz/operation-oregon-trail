@@ -310,3 +310,23 @@ variable "log_retention_days" {
   type        = number
   default     = 30
 }
+
+# ---------------------------------------------------------------------------------------------------------------
+# GitHub Actions deployment
+# ---------------------------------------------------------------------------------------------------------------
+variable "github_repository" {
+  description = "GitHub repository (owner/name) allowed to deploy via OIDC (.github/workflows/deploy.yml). null = no deploy identity."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.github_repository == null || can(regex("^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$", coalesce(var.github_repository, "x")))
+    error_message = "github_repository must look like owner/name."
+  }
+}
+
+variable "github_deploy_environment" {
+  description = "GitHub environment whose workflow runs may deploy (the OIDC subject is repo:<repository>:environment:<this>)."
+  type        = string
+  default     = "production"
+}

@@ -22,3 +22,5 @@ origin_certificate_path = ".secrets/biffkittz-origin-azure.pfx"
 secret_values_version = 2
 
 origin_pull_certificate_sha256 = "8bca0964060e5eb08a8a3f40e789cbac550c0bb1f07f5f9c8af6fbd732133de7"
+# GitHub Actions deploys (OIDC; see docs/build-and-deploy.md "Deploying from GitHub").
+github_repository = "biffkittz/operation-oregon-trail"

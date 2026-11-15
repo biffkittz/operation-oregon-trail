@@ -169,6 +169,8 @@ Check a PFX with `openssl pkcs12 -in <file> -passin env:PFXPW -info -noout`: it 
 | `temporal_namespace` | Temporal namespace | `oregon.joqqs` |
 | `gemini_judge_model` / `gemini_narrator_model` | Gemini models | `gemini-3.8-flash` / `gemini-3.5-flash-lite` |
 | `log_retention_days` | Log Analytics retention | `30` |
+| `github_repository` | GitHub `owner/name` allowed to deploy via OIDC; creates `id-oregon-github` + the "Oregon releaser" role | `null` (prod: `biffkittz/operation-oregon-trail`) |
+| `github_deploy_environment` | GitHub environment whose runs may deploy | `production` |
 
 ## Outputs
 
@@ -184,6 +186,7 @@ Check a PFX with `openssl pkcs12 -in <file> -passin env:PFXPW -info -noout`: it 
 | `key_vault_name` | Key Vault name |
 | `postgres_fqdn` | Database FQDN (resolves privately inside the VNet) |
 | `origin_certificate_expires` | Certificate expiry reported by Azure |
+| `github_deploy` | `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` for the GitHub repository variables (not secrets) |
 
 ## Checks before every change
 

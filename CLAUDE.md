@@ -20,6 +20,7 @@ Per-project guidance lives in `app/frontend/CLAUDE.md`, `app/backend/CLAUDE.md`,
 | `infra` | Terraform (root module + `modules/`), state in Azure Storage |
 | `scripts` | `dev-deps.sh`, `release-web.sh`, `release-worker.sh`, `lib/` |
 | `docs` | Setup, build/deploy, architecture, game design |
+| `.github/workflows` | `ci.yml` (all checks, every push/PR) and `deploy.yml` (manual, OIDC, worker then web) |
 
 ## Commands
 
@@ -50,6 +51,8 @@ dotnet test --solution oregon.slnx            # all .NET tests (needs Docker; us
   stores, composables in `src/composables/use*.ts`, kebab-case `.vue` file names, Tailwind utilities, no `v-html`.
 * Package versions are central: NuGet in `Directory.Packages.props` (Microsoft packages pinned to **10.0.x**:
   .NET 10 LTS, not 11), npm in `app/frontend/package.json`.
+* CI must stay green: anything the workflow runs (`.github/workflows/ci.yml`) must work from a fresh checkout. Pin
+  new actions to a commit SHA.
 * Keep docs in sync: `docs/*`, `infra/README.md` (inputs/outputs tables) and these CLAUDE.md files.
 
 ## Decisions already made (don't re-litigate without reason)

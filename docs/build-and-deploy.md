@@ -162,6 +162,42 @@ crloginappdemo7fyguj.azurecr.io/oregon-web:<previous-sha>` (same for the worker)
 Release order when contracts change (`shared/Oregon.Contracts`): make changes additive (new optional fields,
 new updates), release the **worker first**, then the web app. Never rename workflow or activity names.
 
+## 4a. Continuous integration and deploying from GitHub
+
+**CI** (`.github/workflows/ci.yml`) runs on every push to `main`, every pull request and on demand. Its jobs run in
+parallel and all must pass:
+
+| Job | What it checks |
+|---|---|
+| `.NET` | restore, known-vulnerable NuGet packages, Release build (warnings are errors, style enforced), all 162+ tests incl. Testcontainers PostgreSQL, a Temporal dev server and the replay tests |
+| `Frontend` | `npm ci`, `npm run check` (vue-tsc, ESLint, oxlint, Vitest), production build, `npm audit --omit=dev` |
+| `End-to-end` | `./buildAndRunSite.sh` (Docker PostgreSQL + Temporal, fake LLM), then Playwright + axe; report and logs uploaded on failure |
+| `Terraform` | `fmt -check`, `init -backend=false` with the committed lock file, `validate` (no credentials needed) |
+| `ShellCheck + actionlint` | every script and workflow |
+| `Docker images` | both Dockerfiles build (nothing is pushed) |
+
+Actions are pinned to commit SHAs; update them deliberately (Dependabot can do it: `package-ecosystem:
+github-actions`). Recommended: protect `main` and require the CI checks before merging.
+
+**Deploy** (`.github/workflows/deploy.yml`) is manual: Actions > Deploy > Run workflow, choose `all`, `worker` or
+`web`. It runs the full CI first, then (from `main` only, in the `production` environment) signs in to Azure with
+**OIDC**, releases the worker before the web app with the same scripts as locally (`--local` builds on the runner;
+the web release runs the migrate job first) and smoke-tests the site through Cloudflare. Infrastructure changes
+(`terraform apply`) stay a local, reviewed step.
+
+One-time setup:
+
+1. `github_repository = "biffkittz/operation-oregon-trail"` is set in `prod.tfvars`; `terraform apply` creates the
+   `id-oregon-github` identity, its federated credential (trusting only runs of that repository in environment
+   `production`) and a custom role "Oregon releaser" that can update the apps and the migrate job and assign their
+   identities, plus AcrPush/Reader on the registry. It cannot read Key Vault, touch the database or change
+   infrastructure.
+2. `terraform output github_deploy` prints three values; add them as **repository variables** (Settings > Secrets
+   and variables > Actions > Variables; they aren't secrets): `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+   `AZURE_SUBSCRIPTION_ID`.
+3. Create the **environment** `production` (Settings > Environments). Add yourself as a required reviewer if every
+   release should wait for approval, and restrict it to the `main` branch.
+
 ## 5. Workflow code is long-lived: change it carefully
 
 Every save slot is a running workflow that may live for weeks. When a new worker starts, Temporal replays each
@@ -235,9 +271,6 @@ in the shared registry.
 
 ## 9. Next steps
 
-* **CI/CD**: a GitHub Actions workflow per deployable (path filters on `app/**` and `worker/**`) that runs
-  the tests and then the release script, authenticating to Azure with an OIDC federated credential (no stored
-  secrets).
 * **Replay tests in CI**: export a few production histories (`temporal workflow show --output json`) and replay
   them against new worker builds with `WorkflowReplayer` before releasing.
 * **Scale-out**: more than one web replica would need a SignalR backplane (Azure SignalR Service or Redis) and a

@@ -575,3 +575,74 @@ resource "azurerm_container_app_custom_domain" "web" {
   # Azure validates the asuid TXT record when binding, so the records must exist first.
   depends_on = [module.dns]
 }
+
+# -------------------------------------------------------------------------------------------------------------
+# GitHub Actions deploy identity (.github/workflows/deploy.yml). GitHub signs in with OIDC: the federated
+# credential trusts only workflow runs of this repository in the given GitHub environment, so no Azure secret is
+# stored in GitHub. Scope is what the release scripts need, nothing more: push/read images, update the two apps and
+# the migrate job (which requires assigning their managed identities), and read the resource group. It cannot read
+# Key Vault secrets, touch the database or change infrastructure.
+# -------------------------------------------------------------------------------------------------------------
+resource "azurerm_user_assigned_identity" "github_deploy" {
+  count               = local.github_deploy_enabled ? 1 : 0
+  name                = "id-${var.name_prefix}-github"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = local.tags
+}
+
+resource "azurerm_federated_identity_credential" "github_deploy" {
+  count                     = local.github_deploy_enabled ? 1 : 0
+  name                      = "github-${var.github_deploy_environment}"
+  user_assigned_identity_id = azurerm_user_assigned_identity.github_deploy[0].id
+  issuer                    = "https://token.actions.githubusercontent.com"
+  audience                  = ["api://AzureADTokenExchange"]
+  subject                   = "repo:${var.github_repository}:environment:${var.github_deploy_environment}"
+}
+
+# Exactly what scripts/release-*.sh and scripts/migrate-db.sh call: update/read apps, revisions and jobs, start
+# job executions, join the environment and assign the apps' managed identities (ARM checks both on every update).
+resource "azurerm_role_definition" "release" {
+  count       = local.github_deploy_enabled ? 1 : 0
+  name        = "Oregon releaser (${azurerm_resource_group.main.name})"
+  scope       = azurerm_resource_group.main.id
+  description = "Roll out new images to the oregon Container Apps and run the migrate job. No secrets, no infrastructure changes."
+
+  permissions {
+    actions = [
+      "Microsoft.Resources/subscriptions/resourceGroups/read",
+      "Microsoft.App/containerApps/read",
+      "Microsoft.App/containerApps/write",
+      "Microsoft.App/containerApps/revisions/read",
+      "Microsoft.App/containerApps/revisions/restart/action",
+      "Microsoft.App/jobs/read",
+      "Microsoft.App/jobs/write",
+      "Microsoft.App/jobs/start/action",
+      "Microsoft.App/jobs/executions/read",
+      "Microsoft.App/managedEnvironments/read",
+      "Microsoft.App/managedEnvironments/join/action",
+      "Microsoft.ManagedIdentity/userAssignedIdentities/read",
+      "Microsoft.ManagedIdentity/userAssignedIdentities/assign/action",
+      "Microsoft.App/locations/*/read",
+    ]
+  }
+
+  assignable_scopes = [azurerm_resource_group.main.id]
+}
+
+locals {
+  github_deploy_roles = local.github_deploy_enabled ? {
+    "acr-push" = { scope = data.azurerm_container_registry.shared.id, role = "AcrPush", role_id = null }
+    "acr-read" = { scope = data.azurerm_container_registry.shared.id, role = "Reader", role_id = null }
+    "release"  = { scope = azurerm_resource_group.main.id, role = null, role_id = azurerm_role_definition.release[0].role_definition_resource_id }
+  } : {}
+}
+
+resource "azurerm_role_assignment" "github_deploy" {
+  for_each             = local.github_deploy_roles
+  scope                = each.value.scope
+  role_definition_name = each.value.role
+  role_definition_id   = each.value.role_id
+  principal_id         = azurerm_user_assigned_identity.github_deploy[0].principal_id
+  principal_type       = "ServicePrincipal"
+}

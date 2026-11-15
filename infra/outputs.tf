@@ -52,3 +52,12 @@ output "origin_certificate_expires" {
   description = "Expiration date of the Cloudflare origin certificate as reported by Azure."
   value       = try(azapi_resource.origin_certificate.output.properties.expirationDate, null)
 }
+
+output "github_deploy" {
+  description = "Values for the GitHub repository variables AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID (null when github_repository is unset). Not secrets."
+  value = local.github_deploy_enabled ? {
+    AZURE_CLIENT_ID       = azurerm_user_assigned_identity.github_deploy[0].client_id
+    AZURE_TENANT_ID       = data.azurerm_client_config.current.tenant_id
+    AZURE_SUBSCRIPTION_ID = data.azurerm_client_config.current.subscription_id
+  } : null
+}

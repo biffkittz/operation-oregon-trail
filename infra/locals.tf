@@ -16,4 +16,7 @@ locals {
   # Authenticated Origin Pulls are on once the thumbprint of our uploaded origin-pull certificate is configured.
   origin_pull_sha256  = var.origin_pull_certificate_sha256 == null ? null : lower(replace(replace(var.origin_pull_certificate_sha256, ":", ""), " ", ""))
   origin_pull_enabled = local.origin_pull_sha256 != null
+
+  # GitHub Actions deploy identity (OIDC) is created once the repository is configured.
+  github_deploy_enabled = var.github_repository != null
 }

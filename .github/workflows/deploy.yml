@@ -1,0 +1,77 @@
+# Release to Azure: run on demand (Actions > Deploy > Run workflow) from main. The whole CI suite runs first and
+# must pass. Azure sign-in uses GitHub OIDC with the "id-oregon-github" managed identity (infra: github_repository),
+# so no Azure credential is stored in GitHub. Infrastructure changes (terraform apply) stay a local, reviewed step.
+#
+# One-time setup (see docs/build-and-deploy.md, "Deploying from GitHub"):
+#   - repository variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID (terraform output github_deploy)
+#   - an environment named "production" (optionally with required reviewers)
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: What to release
+        type: choice
+        options: [all, worker, web]
+        default: all
+
+permissions:
+  contents: read
+
+# Never run two releases at once, and never cancel one halfway.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Release ${{ inputs.target }}
+    needs: ci
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: production
+    permissions:
+      contents: read
+      id-token: write # OIDC token for azure/login
+    env:
+      SITE_URL: https://oregon.biffkittz.com
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Azure sign-in (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Contracts are additive and the worker must understand new commands before the web app sends them,
+      # so the worker always goes first (docs/build-and-deploy.md). Images build on the runner (--local) and are
+      # tagged with the commit SHA.
+      - name: Release worker
+        if: inputs.target != 'web'
+        run: scripts/release-worker.sh --local
+
+      # Runs the migrate job with the new image before switching the web app over (scripts/migrate-db.sh).
+      - name: Release web (migrates the database first)
+        if: inputs.target != 'worker'
+        run: scripts/release-web.sh --local
+
+      - name: Smoke test through Cloudflare
+        run: |
+          for _ in $(seq 1 30); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/healthz/ready")" = "200" ] \
+              && [ "$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/api/auth/session")" = "200" ]; then
+              echo "The site is healthy."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$SITE_URL is not healthy after the release. Roll back: az containerapp update -n <app> -g rg-oregon --image <previous image>."
+          exit 1

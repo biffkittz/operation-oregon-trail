@@ -1,5 +1,7 @@
 # STARWAGON: the long haul to the Oregon Reach
 
+[![CI](https://github.com/biffkittz/operation-oregon-trail/actions/workflows/ci.yml/badge.svg)](https://github.com/biffkittz/operation-oregon-trail/actions/workflows/ci.yml)
+
 A retro, text-heavy, single-player game. You captain a patched-up "starwagon" across a hostile frontier toward
 Willamette Landing: the optimism of a spacefaring commonwealth meets the dust, debt and dysfunction of a wagon
 trail. Every voyage is a **durable Temporal workflow**; an LLM (**Google Gemini**) writes the world, plays the
