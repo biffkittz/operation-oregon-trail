@@ -105,7 +105,9 @@ public static partial class DatabaseSetup
         string[] statements =
         [
             "SELECT format('CREATE ROLE %I LOGIN', @role) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = @role)",
-            "SELECT format('ALTER ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', @role, @verifier)",
+            // No NOSUPERUSER/NOCREATEDB/NOCREATEROLE: new roles have none of those anyway, and on PostgreSQL 16+ only a
+            // superuser may mention the SUPERUSER attribute at all; Azure's admin login is not one (42501).
+            "SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', @role, @verifier)",
             "SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), @role)",
             "SELECT format('GRANT USAGE ON SCHEMA public TO %I', @role)",
             "SELECT format('REVOKE CREATE ON SCHEMA public FROM %I', @role)",

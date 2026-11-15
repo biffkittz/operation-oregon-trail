@@ -68,13 +68,29 @@ public sealed class DatabaseSetupTests(BackendFactory factory)
     private static OregonDbContext Context(string connectionString) =>
         new(new DbContextOptionsBuilder<OregonDbContext>().UseNpgsql(connectionString).UseSnakeCaseNamingConvention().Options);
 
+    /// <summary>
+    /// A fresh database owned by an admin that, like Azure Database for PostgreSQL's administrator login, is NOT a
+    /// superuser and only has CREATEROLE. Running the setup as the container's real superuser would hide statements
+    /// Azure rejects (e.g. any mention of the SUPERUSER attribute).
+    /// </summary>
     private async Task<string> CreateIsolatedDatabaseAsync()
     {
-        string name = $"setup_{Guid.NewGuid():N}";
+        string suffix = Guid.NewGuid().ToString("N")[..12];
+        string database = $"setup_{suffix}";
+        string admin = $"azure_like_admin_{suffix}";
+        const string adminPassword = "Admin-pass_word.42~";
         await using NpgsqlConnection connection = new(factory.AdminConnectionString);
         await connection.OpenAsync(Ct);
-        await using NpgsqlCommand create = new($"CREATE DATABASE \"{name}\"", connection);
-        await create.ExecuteNonQueryAsync(Ct);
-        return new NpgsqlConnectionStringBuilder(factory.AdminConnectionString) { Database = name }.ConnectionString;
+        foreach (string sql in new[]
+        {
+            $"CREATE ROLE {admin} LOGIN CREATEROLE NOSUPERUSER PASSWORD '{adminPassword}'",
+            $"CREATE DATABASE \"{database}\" OWNER {admin}",
+        })
+        {
+            await using NpgsqlCommand command = new(sql, connection);
+            await command.ExecuteNonQueryAsync(Ct);
+        }
+
+        return new NpgsqlConnectionStringBuilder(factory.AdminConnectionString) { Database = database, Username = admin, Password = adminPassword }.ConnectionString;
     }
 }
