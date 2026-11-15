@@ -59,7 +59,11 @@ require_cmd git "Install git."
 require_cmd curl "Install curl."
 require_cmd python3 "Install Python 3."
 require_linux_az
-az account show >/dev/null 2>&1 || die "Not logged in to Azure. Run 'az login' first."
+if ! account_error="$(az account show --output none 2>&1)"; then
+  printf '%s\n' "$account_error" | tail -3 >&2
+  die "The Linux Azure CLI ($(command -v az)) is not logged in. Run 'az login' with that CLI. If you installed it in a terminal that was already open, that terminal may still run the Windows az from bash's cache: run 'hash -r' (or open a new terminal), check that 'type az' prints /usr/bin/az, then 'az login'."
+fi
+ok "Azure: $(azq account show --query '[name, user.name]' -o tsv | paste -sd ' ' -) via $(command -v az)"
 $local_build && require_cmd docker "Install Docker."
 
 source_root="$REPO_ROOT"
