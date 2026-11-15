@@ -43,9 +43,23 @@ azq() {
 }
 
 # Short git SHA (plus -dirty) used as the container image tag.
+# image_tag [source root]: short SHA of HEAD, plus -dirty when that checkout has uncommitted changes (including
+# mode-only changes such as a lost executable bit, and untracked files that aren't ignored).
 image_tag() {
-  local sha
-  sha="$(git -C "$REPO_ROOT" rev-parse --short=10 HEAD 2>/dev/null || echo "local")"
-  if [[ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]]; then sha="${sha}-dirty"; fi
+  local root="${1:-$REPO_ROOT}" sha
+  sha="$(git -C "$root" rev-parse --short=10 HEAD 2>/dev/null || echo "local")"
+  if [[ -n "$(git -C "$root" status --porcelain 2>/dev/null)" ]]; then sha="${sha}-dirty"; fi
   printf '%s' "$sha"
+}
+
+# Refuses the Windows Azure CLI reached from WSL (/mnt/c/.../az): it prints CRLF line endings, mangles paths in
+# 'az acr build' and has had broken extensions, which made three release steps fail. Install the Linux CLI:
+#   curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+require_linux_az() {
+  local az_path
+  az_path="$(command -v az 2>/dev/null)" || die "The Azure CLI is not installed: curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash"
+  az_path="$(readlink -f "$az_path")"
+  if [[ "$az_path" == /mnt/* || "$az_path" == *.cmd || "$az_path" == *.exe ]]; then
+    die "'az' is the Windows Azure CLI ($az_path). Install the Linux one in WSL (curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash), run 'az login', and make sure 'command -v az' shows /usr/bin/az."
+  fi
 }

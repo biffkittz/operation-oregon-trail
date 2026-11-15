@@ -87,7 +87,7 @@ worker/
   Dockerfile            worker image
 shared/Oregon.Contracts Temporal contracts shared by backend and worker
 infra/                  Terraform (root module, modules/, environments/)
-scripts/                dev-deps.sh, release-web.sh, release-worker.sh
+scripts/                deploy.sh (one-command release), smoke-test.sh, dev-deps.sh, release-*.sh, migrate-db.sh
 docs/                   documentation
 buildAndRunSite.sh      build + combine + run locally
 compose.yaml            local PostgreSQL (and optional Temporal dev server)

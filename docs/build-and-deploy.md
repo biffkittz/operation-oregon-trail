@@ -139,14 +139,58 @@ log in with `TF_VAR_app_login_password`.
 
 ## 4. Releasing changes
 
+Release a committed, pushed commit with one command:
+
 ```bash
-scripts/release-web.sh       # SPA and/or backend changes
-scripts/release-worker.sh    # workflow, game rule or LLM changes (read the next section first)
+scripts/deploy.sh                       # everything: worker + web
+scripts/deploy.sh --target web          # or just one (worker | web)
+scripts/deploy.sh --ref origin/main     # deploy what's on GitHub, from a clean temporary checkout
+scripts/deploy.sh --infra               # also terraform plan/apply (asks before applying)
+scripts/deploy.sh --dry-run             # checks + the plan, changes nothing
 ```
 
-Each script builds the image in ACR (`az acr build`, no local Docker needed; add `--local` to build locally),
-pushes `:<git-sha>` and `:latest`, runs `az containerapp update` and waits until the new revision is running. Tags
-end in `-dirty` when the working tree has uncommitted changes.
+It refuses to start unless the Linux Azure CLI is logged in and the source is a clean commit that is on a remote
+branch (so the image tag is that commit's SHA and maps to GitHub). Then, in this order:
+
+1. **builds** the images (`az acr build`, or `--local` Docker) tagged `:<sha>` (and `:latest`);
+2. **migrates** with the new web image (`job-oregon-migrate`) while the old revisions keep serving;
+3. **applies Terraform** if `--infra` (after the migration, so new app settings find the schema and roles they need);
+4. **rolls out** the worker, then the web app, waiting for each revision to run;
+5. **smoke-tests** the site through Cloudflare (`scripts/smoke-test.sh`): readiness, login, a voyage is created,
+   gets its LLM prologue and journal, and is deleted again. Login needs `SMOKE_PASSWORD` or
+   `TF_VAR_app_login_password` (sourced from `infra/.secrets/secrets.env`); without it only health is checked;
+6. **rolls back** to the previous images if a rollout or the smoke test fails, and says so. Migrations are not rolled
+   back, which is why they must stay backward compatible.
+
+`scripts/release-web.sh` and `scripts/release-worker.sh` still release a single app (they allow `-dirty` tags, with
+a warning) for quick experiments; `scripts/smoke-test.sh` runs the smoke test on its own.
+
+### Clean commits, clean tags
+
+A tag ends in `-dirty` when `git status --porcelain` isn't empty: uncommitted edits, untracked files that aren't
+ignored, **or mode-only changes**. The image then doesn't correspond to any commit, so `deploy.sh` refuses it.
+
+| `git status` shows | Cause | Fix |
+|---|---|---|
+| `M file` with `old mode 100644 new mode 100755` in `git diff` | a commit made from a Windows tool dropped the executable bit | `git add --chmod=+x <file>` and commit; CI fails on this now |
+| ` M` on files you didn't edit, diff is all line endings | CRLF written by a Windows tool | `.gitattributes` forces LF; `git add --renormalize .` and commit |
+| `??` new files | not committed yet | commit them, or add them to `.gitignore` |
+| your own work in progress | not ready to release | `git stash -u`, deploy, `git stash pop`; or `scripts/deploy.sh --ref origin/main` |
+
+Recommended habit: commit from WSL (terminal or VS Code connected to WSL), keep `core.fileMode=true` in this
+clone, push, then deploy. If you also use a Windows git client on the same files, make it read the repository
+through `\\wsl$\...` rather than a copy on the Windows drive.
+
+### Azure CLI in WSL
+
+Use the Linux Azure CLI (`command -v az` must print `/usr/bin/az`), with **its own** profile. If `~/.azure` is a
+symlink to the Windows profile (`/mnt/c/Users/<you>/.azure`), both CLIs share extensions and break each other
+(seen here: an unreadable `log-analytics` extension made every command fail in both). Fix once:
+
+```bash
+rm ~/.azure    # only removes the symlink; the Windows profile is untouched
+az login
+```
 
 **Database migrations** run in the Container Apps job `job-oregon-migrate` (the web image with the `migrate`
 argument), as the database admin, *before* the web rollout: `release-web.sh` calls `scripts/migrate-db.sh` with the
@@ -156,8 +200,10 @@ predate Key Vault encryption. Run it alone with `scripts/migrate-db.sh [--tag <t
 backward compatible with the running web revision (add columns/tables first, remove them a release later).
 
 Terraform ignores the image of both apps (`lifecycle.ignore_changes`), so `terraform apply` never rolls back a
-release. **Rollback**: `az containerapp update -n ca-oregon-web -g rg-oregon --image
-crloginappdemo7fyguj.azurecr.io/oregon-web:<previous-sha>` (same for the worker).
+release. **Manual rollback** (deploy.sh prints the previous images): `az containerapp update -n ca-oregon-web -g
+rg-oregon --image crloginappdemo7fyguj.azurecr.io/oregon-web:<previous-sha>` (same for the worker). Rolling the
+worker back after games advanced on a new `Workflow.Patched` branch stalls those games (Temporal retries their tasks)
+until the fix is rolled forward; nothing is lost.
 
 Release order when contracts change (`shared/Oregon.Contracts`): make changes additive (new optional fields,
 new updates), release the **worker first**, then the web app. Never rename workflow or activity names.
@@ -181,8 +227,9 @@ github-actions`). Recommended: protect `main` and require the CI checks before m
 
 **Deploy** (`.github/workflows/deploy.yml`) is manual: Actions > Deploy > Run workflow, choose `all`, `worker` or
 `web`. It runs the full CI first, then (from `main` only, in the `production` environment) signs in to Azure with
-**OIDC**, releases the worker before the web app with the same scripts as locally (`--local` builds on the runner;
-the web release runs the migrate job first) and smoke-tests the site through Cloudflare. Infrastructure changes
+**OIDC** and runs the same `scripts/deploy.sh` as a local release (`--local` builds on the runner): migrate, worker,
+web, smoke test, automatic rollback. Add an environment secret `SMOKE_PASSWORD` (the site password) to include the
+login and voyage round trip in the smoke test; without it only health is checked. Infrastructure changes
 (`terraform apply`) stay a local, reviewed step.
 
 One-time setup:

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Shared release logic: build an image, push it to Azure Container Registry, roll it out to a Container App.
-# Source it from a release script, then call: release_image <image-name> <dockerfile> <container-app-name> "$@"
+# Building blocks (build_image, rollout_app, current_image, ...) are used by scripts/deploy.sh; release_image keeps
+# the single-app behavior of scripts/release-web.sh and scripts/release-worker.sh.
 # shellcheck source=scripts/lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -15,17 +16,23 @@ Usage: $(basename "$0") [--build-only] [--local] [--tag TAG]
   --local        build with local Docker and push (default: build remotely with 'az acr build')
   --tag TAG      image tag (default: git short SHA, with -dirty for uncommitted changes)
 Environment: ACR_NAME (default $ACR_NAME), RESOURCE_GROUP (default $RESOURCE_GROUP)
+For a full, checked release of everything use scripts/deploy.sh.
 USAGE
 }
 
-# Copies tracked + untracked-but-not-ignored files into artifacts/ (git-ignored) and prints the directory.
-# Staged inside the repository so the Windows Azure CLI can still translate the path.
+acr_login_server() {
+  azq acr show --name "$ACR_NAME" --query loginServer -o tsv
+}
+
+# stage_build_context [source root]: copies the files git tracks (or would track) into artifacts/ and prints the
+# directory, so no node_modules, build output, secrets or symlinks reach the registry. Staged inside the repository
+# so the Windows Azure CLI can still translate the path.
 stage_build_context() {
-  local dir
+  local root="${1:-$REPO_ROOT}" dir
   mkdir -p "$REPO_ROOT/artifacts"
   dir="$(mktemp -d "$REPO_ROOT/artifacts/acr-context.XXXXXX")"
   # Regular files only: skips symlinks and tracked files deleted from the working tree.
-  (cd "$REPO_ROOT" && git ls-files -z --cached --others --exclude-standard \
+  (cd "$root" && git ls-files -z --cached --others --exclude-standard \
     | while IFS= read -r -d '' file; do
         if [[ -f "$file" && ! -L "$file" ]]; then printf '%s\0' "$file"; fi
       done \
@@ -33,6 +40,67 @@ stage_build_context() {
   printf '%s' "$dir"
 }
 
+# image_ref <repository> <tag>
+image_ref() {
+  printf '%s/%s:%s' "$(acr_login_server)" "$1" "$2"
+}
+
+# build_image <repository> <dockerfile> <tag> <local: true|false> [source root]
+# Builds <registry>/<repository>:<tag> (also tagged :latest) and pushes both.
+build_image() {
+  local image="$1" dockerfile="$2" tag="$3" local_build="$4" root="${5:-$REPO_ROOT}" login_server ref
+  login_server="$(acr_login_server)"
+  ref="$login_server/$image:$tag"
+
+  if [[ "$local_build" == true ]]; then
+    require_cmd docker "Install Docker."
+    step "Building $ref locally (linux/amd64)"
+    docker build --platform linux/amd64 -f "$root/$dockerfile" -t "$ref" -t "$login_server/$image:latest" "$root"
+    az acr login --name "$ACR_NAME" >/dev/null
+    docker push "$ref"
+    docker push "$login_server/$image:latest"
+  else
+    # az acr build uploads its source directory: upload the staged copy (see stage_build_context); .dockerignore
+    # then filters it again. This also keeps the Windows az.cmd (from WSL) working: it mangles paths while packing
+    # and chokes on the symlinks in node_modules/.bin.
+    local context status=0
+    context="$(stage_build_context "$root")"
+    step "Building $ref in Azure Container Registry"
+    az acr build --registry "$ACR_NAME" --platform linux/amd64 --file "$context/$dockerfile" \
+      --image "$image:$tag" --image "$image:latest" "$context" || status=$?
+    rm -rf "$context"
+    (( status == 0 )) || die "Image build failed: $ref"
+  fi
+  ok "Pushed $ref"
+}
+
+# current_image <container app>: the image the app runs right now.
+current_image() {
+  azq containerapp show --name "$1" --resource-group "$RESOURCE_GROUP" --query "properties.template.containers[0].image" -o tsv
+}
+
+# rollout_app <container app> <image ref>: updates the image and waits for the new revision to run. Returns
+# non-zero (instead of exiting) when the update or the revision fails, so callers can roll back.
+rollout_app() {
+  local app="$1" ref="$2" revision state=""
+  step "Rolling out $ref to $app"
+  az containerapp update --name "$app" --resource-group "$RESOURCE_GROUP" --image "$ref" --output none || return 1
+  revision="$(azq containerapp show --name "$app" --resource-group "$RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
+  for _ in $(seq 1 60); do
+    state="$(azq containerapp revision show --name "$app" --resource-group "$RESOURCE_GROUP" --revision "$revision" --query properties.runningState -o tsv 2>/dev/null || true)"
+    case "$state" in
+      Running|RunningAtMaxScale) ok "Revision $revision is $state"; return 0 ;;
+      Failed|Degraded)
+        warn "Revision $revision is $state. Logs: az containerapp logs show -n $app -g $RESOURCE_GROUP --follow"
+        return 1 ;;
+    esac
+    sleep 5
+  done
+  warn "Revision $revision is still '${state:-unknown}' after 5 minutes."
+  return 1
+}
+
+# release_image <image-name> <dockerfile> <container-app-name> [options]: one app, build + roll out.
 release_image() {
   local image="$1" dockerfile="$2" app="$3"
   shift 3
@@ -51,32 +119,11 @@ release_image() {
   require_cmd az "Install the Azure CLI."
   az account show >/dev/null 2>&1 || die "Not logged in to Azure. Run 'az login' first."
   [[ -z "$tag" ]] && tag="$(image_tag)"
-  [[ "$tag" == *-dirty ]] && warn "Working tree has uncommitted changes; tagging as $tag."
+  [[ "$tag" == *-dirty ]] && warn "Working tree has uncommitted changes; tagging as $tag. scripts/deploy.sh refuses this."
 
-  local login_server
-  login_server="$(azq acr show --name "$ACR_NAME" --query loginServer -o tsv)"
-  local ref="$login_server/$image:$tag"
-
-  if $local_build; then
-    require_cmd docker "Install Docker."
-    step "Building $ref locally (linux/amd64)"
-    docker build --platform linux/amd64 -f "$REPO_ROOT/$dockerfile" -t "$ref" -t "$login_server/$image:latest" "$REPO_ROOT"
-    az acr login --name "$ACR_NAME" >/dev/null
-    docker push "$ref"
-    docker push "$login_server/$image:latest"
-  else
-    # az acr build uploads its source directory. Instead of the working tree, upload a staged copy containing
-    # only files git tracks or would track (no node_modules, build output, secrets or symlinks); .dockerignore
-    # then filters it again. This also keeps the Windows az.cmd (when called from WSL) working: it mangles paths
-    # while packing and chokes on the symlinks in node_modules/.bin.
-    local context
-    context="$(stage_build_context)"
-    step "Building $ref in Azure Container Registry"
-    az acr build --registry "$ACR_NAME" --platform linux/amd64 --file "$context/$dockerfile" \
-      --image "$image:$tag" --image "$image:latest" "$context"
-    rm -rf "$context"
-  fi
-  ok "Pushed $ref"
+  build_image "$image" "$dockerfile" "$tag" "$local_build"
+  local ref
+  ref="$(image_ref "$image" "$tag")"
 
   if $build_only; then
     info "Build only: Container App '$app' was not updated."
@@ -88,15 +135,5 @@ release_image() {
     before_rollout "$ref"
   fi
 
-  step "Rolling out $ref to $app"
-  az containerapp update --name "$app" --resource-group "$RESOURCE_GROUP" --image "$ref" --output none
-  local revision state
-  revision="$(azq containerapp show --name "$app" --resource-group "$RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
-  for _ in $(seq 1 60); do
-    state="$(azq containerapp revision show --name "$app" --resource-group "$RESOURCE_GROUP" --revision "$revision" --query properties.runningState -o tsv 2>/dev/null || true)"
-    [[ "$state" == "Running" || "$state" == "RunningAtMaxScale" ]] && break
-    [[ "$state" == "Failed" || "$state" == "Degraded" ]] && die "Revision $revision is $state. Check: az containerapp logs show -n $app -g $RESOURCE_GROUP --follow"
-    sleep 5
-  done
-  ok "Revision $revision is ${state:-unknown}"
+  rollout_app "$app" "$ref" || die "Rollout of $ref to $app failed."
 }

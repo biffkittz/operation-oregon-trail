@@ -18,7 +18,7 @@ Per-project guidance lives in `app/frontend/CLAUDE.md`, `app/backend/CLAUDE.md`,
 | `worker/Oregon.Worker.Tests` | Rules, playthroughs, balance, LLM plumbing, workflow integration tests |
 | `shared/Oregon.Contracts` | Workflow interfaces, update/query payloads, views shared by backend and worker |
 | `infra` | Terraform (root module + `modules/`), state in Azure Storage |
-| `scripts` | `dev-deps.sh`, `release-web.sh`, `release-worker.sh`, `lib/` |
+| `scripts` | `deploy.sh` (release everything, smoke test, rollback), `smoke-test.sh`, `dev-deps.sh`, `release-*.sh`, `migrate-db.sh`, `cloudflare-origin-pull.sh`, `lib/` |
 | `docs` | Setup, build/deploy, architecture, game design |
 | `.github/workflows` | `ci.yml` (all checks, every push/PR) and `deploy.yml` (manual, OIDC, worker then web) |
 
@@ -27,6 +27,7 @@ Per-project guidance lives in `app/frontend/CLAUDE.md`, `app/backend/CLAUDE.md`,
 ```bash
 ./buildAndRunSite.sh                          # build SPA + backend, combine, run with deps + worker (http://localhost:5069, pw "oregon")
 scripts/dev-deps.sh up|down|reset|status      # PostgreSQL :55432 (+ Temporal :7233/:8233 if not already running)
+scripts/deploy.sh [--target web|worker] [--dry-run]   # production release (clean pushed commit, Linux az); never run without the user's go-ahead
 dotnet build oregon.slnx                      # warnings are errors; .editorconfig style enforced
 dotnet test --solution oregon.slnx            # all .NET tests (needs Docker; uses the Temporal CLI if on PATH)
 (cd app/frontend && npm run check)            # vue-tsc + eslint + oxlint + vitest
@@ -67,6 +68,9 @@ namespace `oregon.joqqs`, regional endpoint `us-east-2.aws.api.temporal.io:7233`
 ## Environment gotchas
 
 * Dev PostgreSQL is on port **55432** (5432 often belongs to a native PostgreSQL).
-* The Windows `az` from WSL emits CRLF; scripts use `azq` (strips `\r`). Prefer the Linux Azure CLI.
+* The Windows `az` from WSL emits CRLF; scripts use `azq` (strips `\r`). Use the Linux Azure CLI with its own
+  `~/.azure` (not a symlink to the Windows profile); `deploy.sh` refuses the Windows one.
+* Commit from WSL: Windows git tools drop the executable bit on scripts (CI checks it) and can introduce CRLF
+  (`.gitattributes` forces LF).
 * `dotnet test` runs on Microsoft Testing Platform (opted in via `global.json`); filters go after `--`, e.g.
   `dotnet test --project worker/Oregon.Worker.Tests -- --filter-class "<Class>"`.

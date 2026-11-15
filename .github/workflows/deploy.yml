@@ -39,8 +39,6 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC token for azure/login
-    env:
-      SITE_URL: https://oregon.biffkittz.com
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -51,27 +49,14 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      # Contracts are additive and the worker must understand new commands before the web app sends them,
-      # so the worker always goes first (docs/build-and-deploy.md). Images build on the runner (--local) and are
-      # tagged with the commit SHA.
-      - name: Release worker
-        if: inputs.target != 'web'
-        run: scripts/release-worker.sh --local
-
-      # Runs the migrate job with the new image before switching the web app over (scripts/migrate-db.sh).
-      - name: Release web (migrates the database first)
-        if: inputs.target != 'worker'
-        run: scripts/release-web.sh --local
-
-      - name: Smoke test through Cloudflare
-        run: |
-          for _ in $(seq 1 30); do
-            if [ "$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/healthz/ready")" = "200" ] \
-              && [ "$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/api/auth/session")" = "200" ]; then
-              echo "The site is healthy."
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "::error::$SITE_URL is not healthy after the release. Roll back: az containerapp update -n <app> -g rg-oregon --image <previous image>."
-          exit 1
+      # scripts/deploy.sh does the whole release in the safe order: build both images (tagged with this commit), run
+      # the migrate job with the new web image, roll out the worker before the web app, smoke-test the site through
+      # Cloudflare and roll back to the previous images if anything fails. Same script as a local release.
+      # --allow-unpushed: the commit came from GitHub, so it is pushed by definition (the shallow checkout has no
+      # remote branch refs to prove it).
+      - name: Deploy (build, migrate, roll out, smoke test, roll back on failure)
+        env:
+          TARGET: ${{ inputs.target }}
+          # Optional environment secret: enables the login + voyage round trip in the smoke test.
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+        run: scripts/deploy.sh --target "$TARGET" --local --allow-unpushed
