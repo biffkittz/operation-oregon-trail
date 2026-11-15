@@ -14,8 +14,8 @@ import type {
 export type CommandResult = { status: 'done'; snapshot: GameSnapshot } | { status: 'pending'; message: string }
 
 function commandBody(command: GameCommand): Record<string, unknown> | undefined {
-  const { kind, ...body } = command
-  return kind === 'continue' ? undefined : body
+  const { kind: _kind, ...body } = command
+  return Object.keys(body).length > 0 ? body : undefined
 }
 
 export const gamesApi = {

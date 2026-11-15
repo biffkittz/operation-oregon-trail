@@ -17,7 +17,7 @@ internal static class ChallengeRules
 
     public static Resolution Resolve(GameState state, ActiveChallenge challenge, Verdict verdict)
     {
-        var profile = DifficultyProfile.For(state.Settings.Difficulty);
+        var profile = DifficultyProfile.For(state);
         List<ResourceChangeView> changes = [];
         ProgressionRules.AddXp(state, challenge.Stat, ProgressionRules.XpFor(verdict), changes);
 

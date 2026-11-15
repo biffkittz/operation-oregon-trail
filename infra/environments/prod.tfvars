@@ -11,9 +11,12 @@ container_registry_name           = "crloginappdemo7fyguj"
 container_registry_resource_group = "rg-loginapp-demo"
 custom_domain                     = "oregon.biffkittz.com"
 cloudflare_zone_name              = "biffkittz.com"
-temporal_address                  = "oregon.joqqs.tmprl.cloud:7233"   #"us-east-2.aws.api.temporal.io:7233"
+temporal_address                  = "oregon.joqqs.tmprl.cloud:7233" #"us-east-2.aws.api.temporal.io:7233"
 temporal_namespace                = "oregon.joqqs"
 
 # Azure rejects OpenSSL 3's default PFX encoding (AES-256/PBES2) as "invalid or password is incorrect"; this copy
 # is re-exported with 3DES/SHA-1 (see README "Origin certificate").
 origin_certificate_path = ".secrets/biffkittz-origin-azure.pfx"
+
+# Bump to re-send app_login_password, gemini_api_key and temporal_api_key from secrets.env to Key Vault.
+secret_values_version = 2

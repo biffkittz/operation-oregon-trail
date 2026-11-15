@@ -67,4 +67,9 @@ public interface IGameWorkflow
     /// <returns>The resulting view.</returns>
     [WorkflowUpdate]
     Task<GameView> SpendUpgradeAsync(SpendUpgradeCommand command);
+
+    /// <summary>Buy emergency fuel from a passing hauler (only offered when stranded without a fuel depot).</summary>
+    /// <returns>The resulting view.</returns>
+    [WorkflowUpdate]
+    Task<GameView> HailHaulerAsync();
 }

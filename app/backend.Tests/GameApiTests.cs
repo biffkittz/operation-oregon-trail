@@ -5,6 +5,7 @@ using Oregon.Backend.Games;
 using Oregon.Backend.Tests.Support;
 using Oregon.Contracts;
 using Oregon.Contracts.Model;
+using Oregon.Contracts.Workflows;
 
 namespace Oregon.Backend.Tests;
 
@@ -85,6 +86,18 @@ public sealed class GameApiTests(BackendFactory factory) : ApiTestBase(factory)
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Contains("nothing to acknowledge", await response.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Hail_IsRoutedToTheHaulerUpdate()
+    {
+        HttpClient client = await SignedInClientAsync();
+        CreatedGameResponse game = await CreateAsync(client);
+
+        HttpResponseMessage response = await client.PostAsync($"/api/games/{game.GameId}/hail", null, Ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(nameof(IGameWorkflow.HailHaulerAsync), Factory.Engine.LastUpdateName);
     }
 
     [Fact]

@@ -34,6 +34,8 @@ public sealed class GameWorkflow : IGameWorkflow
     /// <summary>Safety net in addition to the server's continue-as-new suggestion.</summary>
     private const int MaxHistoryEventsPerRun = 5000;
 
+    private const string EmergencyFuelPatch = "emergency-fuel";
+
     private static readonly TimeSpan ProjectionRetryDelay = TimeSpan.FromSeconds(30);
 
     /// <summary>
@@ -68,6 +70,8 @@ public sealed class GameWorkflow : IGameWorkflow
         GameState state = input.Continuation is null
             ? GameSetup.CreateNew(input, Workflow.UtcNow)
             : GameStateSerializer.FromContinuation(input.Continuation);
+        // Off until RunAsync consults Workflow.Patched (see EmergencyFuelPatch).
+        state.EmergencyFuelEnabled = false;
         _director = new GameDirector(state, new ActivityStoryteller(), new WorkflowClock(), () => Workflow.Random);
         _legsAtRunStart = state.LegsCompleted;
     }
@@ -80,6 +84,10 @@ public sealed class GameWorkflow : IGameWorkflow
     [WorkflowRun]
     public async Task<GameResult> RunAsync(GameWorkflowInput input)
     {
+        // Emergency fuel changes when a stranded ship loses (and so which activities run), so a run that started
+        // before it existed must replay with the old rules. Patched is false while replaying such a history and
+        // true (recording a marker) for new runs; every save picks the feature up at its next Continue-As-New.
+        State.EmergencyFuelEnabled = Workflow.Patched(EmergencyFuelPatch);
         Task projector = RunProjectorAsync();
 
         if (input.Continuation is null)
@@ -186,6 +194,14 @@ public sealed class GameWorkflow : IGameWorkflow
     /// <param name="command">The attribute.</param>
     [WorkflowUpdateValidator(nameof(SpendUpgradeAsync))]
     public void ValidateSpendUpgrade(SpendUpgradeCommand command) => Validate(new UpgradePlayerCommand(command));
+
+    /// <inheritdoc />
+    [WorkflowUpdate]
+    public Task<GameView> HailHaulerAsync() => EnqueueAsync(new HailHaulerPlayerCommand());
+
+    /// <summary>Rejects hailing when not stranded at a depot-less stop, or when the price is out of reach.</summary>
+    [WorkflowUpdateValidator(nameof(HailHaulerAsync))]
+    public void ValidateHailHauler() => Validate(new HailHaulerPlayerCommand());
 
     private void Validate(PlayerCommand command)
     {

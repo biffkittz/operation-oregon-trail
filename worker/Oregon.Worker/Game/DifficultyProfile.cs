@@ -1,4 +1,5 @@
 using Oregon.Contracts.Model;
+using Oregon.Worker.Game.State;
 
 namespace Oregon.Worker.Game;
 
@@ -98,10 +99,38 @@ internal sealed record DifficultyProfile(
         HullWearPerDay: 4,
         MoraleDriftPerDay: 3);
 
+    // Retuned travel for runs with emergency fuel (Workflow.Patched "emergency-fuel"). The hauler removed the
+    // stranding defeats that much of Easy's and Normal's difficulty used to come from (the simulated average player
+    // went from 90/65% to 100/88% victories), so the black itself is harsher instead; BalanceTests is back at
+    // ~90/67/30%. Easy wears the hull faster than Normal on purpose: its repairs are cheaper and faster and its
+    // events pay more, so the extra wear is pressure a player can recover from. Start values are not retuned:
+    // they are fixed before a run consults the patch.
+    private static readonly DifficultyProfile EasyRevised = EasyProfile with { HullWearPerDay = 7, TravelEventChance = 0.5, MoraleDriftPerDay = 2 };
+
+    private static readonly DifficultyProfile NormalRevised = NormalProfile with { HullWearPerDay = 6, TravelEventChance = 0.5 };
+
+    /// <summary>The original profile for a difficulty (start values, and every rule in pre-patch runs).</summary>
     public static DifficultyProfile For(Difficulty difficulty) => difficulty switch
     {
         Difficulty.Easy => EasyProfile,
         Difficulty.Hard => HardProfile,
         _ => NormalProfile,
     };
+
+    /// <summary>The profile a running game's rules use: retuned when the run has emergency fuel.</summary>
+    public static DifficultyProfile For(GameState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (!state.EmergencyFuelEnabled)
+        {
+            return For(state.Settings.Difficulty);
+        }
+
+        return state.Settings.Difficulty switch
+        {
+            Difficulty.Easy => EasyRevised,
+            Difficulty.Hard => HardProfile,
+            _ => NormalRevised,
+        };
+    }
 }

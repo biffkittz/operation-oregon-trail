@@ -45,6 +45,7 @@ public static class GameEndpoints
             ctx.RunAsync(gameId, wf => wf.UseOutpostAsync(new OutpostCommand(body.Service, body.Quantity))));
         commands.MapPost("/upgrade", (Guid gameId, UpgradeRequest body, CommandContext ctx) =>
             ctx.RunAsync(gameId, wf => wf.SpendUpgradeAsync(new SpendUpgradeCommand(body.Stat))));
+        commands.MapPost("/hail", (Guid gameId, CommandContext ctx) => ctx.RunAsync(gameId, wf => wf.HailHaulerAsync()));
 
         api.MapPost("/story-seeds", GenerateSeedAsync).WithTags("Games").RequireRateLimiting(RateLimitPolicies.StorySeeds);
         return api;

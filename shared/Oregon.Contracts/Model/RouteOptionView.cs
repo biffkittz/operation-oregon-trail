@@ -8,6 +8,7 @@ namespace Oregon.Contracts.Model;
 /// <param name="FuelCost">Fuel consumed.</param>
 /// <param name="RationsCost">Rations consumed.</param>
 /// <param name="Affordable">False when the ship lacks the fuel to make the trip.</param>
+/// <param name="Warning">Set when the destination has no fuel depot and the ship would arrive unable to leave.</param>
 public sealed record RouteOptionView(
     string NodeId,
     string Name,
@@ -15,4 +16,5 @@ public sealed record RouteOptionView(
     int Days,
     int FuelCost,
     int RationsCost,
-    bool Affordable);
+    bool Affordable,
+    string? Warning = null);

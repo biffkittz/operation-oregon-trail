@@ -27,8 +27,12 @@ public sealed class FakeGameEngine : IGameEngine
             ? Task.FromResult(TestViews.For(input))
             : throw new GameNotFoundException("gone");
 
+    /// <summary>Gets the workflow update method the last command was routed to.</summary>
+    public string? LastUpdateName { get; private set; }
+
     public Task<GameView> ExecuteAsync(Guid gameId, Expression<Func<IGameWorkflow, Task<GameView>>> update, string? commandId, CancellationToken cancellationToken)
     {
+        LastUpdateName = (update.Body as MethodCallExpression)?.Method.Name;
         if (NextCommandFailure is { } failure)
         {
             NextCommandFailure = null;

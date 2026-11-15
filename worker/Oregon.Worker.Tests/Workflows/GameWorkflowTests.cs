@@ -7,6 +7,7 @@ using Oregon.Worker.Llm;
 using Oregon.Worker.Tests.Support;
 using Oregon.Worker.Workflows;
 using Temporalio.Client;
+using Temporalio.Common;
 using Temporalio.Exceptions;
 using Temporalio.Worker;
 
@@ -82,6 +83,51 @@ public sealed class GameWorkflowTests(TemporalEnvironmentFixture fixture)
             // The new run accepts commands as usual.
             GameView next = await PlayOneTurnAsync(handle, continued);
             Assert.True(next.Version > continued.Version);
+        });
+    }
+
+    /// <summary>
+    /// A first-leg history recorded with the worker as it was before emergency fuel (no patch marker, ends in
+    /// Continue-As-New). Saves started on that worker must replay on this one; see worker/CLAUDE.md.
+    /// </summary>
+    [Fact]
+    public async Task HistoryFromBeforeEmergencyFuel_StillReplays()
+    {
+        string json = await File.ReadAllTextAsync(
+            Path.Combine(AppContext.BaseDirectory, "Workflows", "Histories", "pre-emergency-fuel.json"),
+            TestContext.Current.CancellationToken);
+        WorkflowReplayer replayer = new(new WorkflowReplayerOptions().AddWorkflow<GameWorkflow>());
+
+        WorkflowReplayResult result = await replayer.ReplayWorkflowAsync(
+            WorkflowHistory.FromJson("replay-fixture-pre-emergency-fuel", json),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Null(result.ReplayFailure);
+    }
+
+    [Fact]
+    public async Task NewRuns_RecordTheEmergencyFuelPatch_AndReplayDeterministically()
+    {
+        RecordingProjectionActivities projections = new();
+        await RunAsync(projections, async (client, queue, web) =>
+        {
+            WorkflowHandle<IGameWorkflow> handle = await StartGameAsync(client, queue, web);
+            GameView view = await PollAsync(() => handle.QueryAsync(wf => wf.GetView()), v => v.Phase == GamePhase.Narrative);
+            string firstRunId = (await handle.DescribeAsync()).RunId;
+
+            // Play the first leg, then replay that completed run (it ends in Continue-As-New).
+            for (int i = 0; i < 40 && !(view.Phase == GamePhase.ChoosingRoute && view.Map.Nodes.Count(n => n.Visited) > 1); i++)
+            {
+                view = await PlayOneTurnAsync(handle, view);
+            }
+
+            await PollAsync(() => handle.DescribeAsync(), d => d.RunId != firstRunId);
+            WorkflowHistory history = await client.GetWorkflowHandle(handle.Id, runId: firstRunId).FetchHistoryAsync();
+            WorkflowReplayer replayer = new(new WorkflowReplayerOptions().AddWorkflow<GameWorkflow>());
+            WorkflowReplayResult result = await replayer.ReplayWorkflowAsync(history, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Null(result.ReplayFailure);
+            Assert.Contains(history.Events, e => e.MarkerRecordedEventAttributes?.MarkerName == "core_patch");
         });
     }
 

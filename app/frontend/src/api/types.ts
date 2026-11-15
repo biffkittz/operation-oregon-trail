@@ -116,6 +116,15 @@ export interface RouteOptionView {
   fuelCost: number
   rationsCost: number
   affordable: boolean
+  /** Set when the destination has no fuel depot and the ship would arrive unable to leave. */
+  warning: string | null
+}
+
+/** A passing hauler's offer: only present when stranded at a stop without a fuel depot. */
+export interface EmergencyFuelOfferView {
+  fuel: number
+  price: number
+  waitDays: number
 }
 
 export interface OutpostPromptView {
@@ -175,6 +184,7 @@ export interface PromptView {
   challenge: ChallengePromptView | null
   dilemma: DilemmaPromptView | null
   skirmish: SkirmishPromptView | null
+  emergencyFuel: EmergencyFuelOfferView | null
 }
 
 export interface FinaleView {
@@ -284,6 +294,7 @@ export type GameCommand =
   | { kind: 'skirmish'; hits: number; shotsFired: number; elapsedMs: number }
   | { kind: 'outpost'; service: OutpostService; quantity?: number }
   | { kind: 'upgrade'; stat: StatKind }
+  | { kind: 'hail' }
 
 /** Limits shared with the backend (Oregon.Contracts.GameLimits). */
 export const GameLimits = {

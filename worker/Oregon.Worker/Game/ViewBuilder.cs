@@ -63,7 +63,8 @@ internal static class ViewBuilder
             Routes: TravelRules.Routes(state),
             Outpost: state.Outpost is { } outpost
                 ? OutpostRules.ToView(outpost) with { Name = state.Map.FindNode(outpost.NodeId)?.Name ?? "Outpost" }
-                : null),
+                : null,
+            EmergencyFuel: EmergencyFuelRules.Offer(state)),
         GamePhase.AwaitingResponse when state.Challenge is { } c => new PromptView(
             Challenge: new ChallengePromptView(
                 c.Kind,

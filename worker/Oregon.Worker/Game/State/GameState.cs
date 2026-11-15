@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Oregon.Contracts;
 using Oregon.Contracts.Model;
 using Oregon.Contracts.Workflows;
@@ -38,6 +39,14 @@ internal sealed class GameState
     public int Day { get; set; } = 1;
 
     public ResourcePool Resources { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets a value indicating whether this run may offer emergency fuel (see <c>EmergencyFuelRules</c>).
+    /// Not serialized: the workflow sets it at the start of every run from <c>Workflow.Patched</c>, so runs that
+    /// began before the feature existed replay with the old rules.
+    /// </summary>
+    [JsonIgnore]
+    public bool EmergencyFuelEnabled { get; set; } = true;
 
     public List<StatProgress> Stats { get; set; } = [];
 

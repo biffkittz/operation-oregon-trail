@@ -62,7 +62,7 @@ internal static class SkirmishRules
 
     public static Resolution Resolve(GameState state, ActiveSkirmish skirmish, SkirmishResultCommand result)
     {
-        var profile = DifficultyProfile.For(state.Settings.Difficulty);
+        var profile = DifficultyProfile.For(state);
         (Verdict verdict, double score) = Score(skirmish.Spec, result, AllyRules.Has(state, AllyPerk.Gunner));
         List<ResourceChangeView> changes = [];
 

@@ -11,10 +11,12 @@ namespace Oregon.Contracts.Model;
 /// <param name="Challenge">Free-text challenge (phase AwaitingResponse).</param>
 /// <param name="Dilemma">Three-way choice (phase AwaitingChoice).</param>
 /// <param name="Skirmish">Click battle (phase Skirmish).</param>
+/// <param name="EmergencyFuel">Hauler offer (phase ChoosingRoute, stranded at a stop without a fuel depot).</param>
 public sealed record PromptView(
     NarrativePromptView? Narrative = null,
     IReadOnlyList<RouteOptionView>? Routes = null,
     OutpostPromptView? Outpost = null,
     ChallengePromptView? Challenge = null,
     DilemmaPromptView? Dilemma = null,
-    SkirmishPromptView? Skirmish = null);
+    SkirmishPromptView? Skirmish = null,
+    EmergencyFuelOfferView? EmergencyFuel = null);

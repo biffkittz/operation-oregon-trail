@@ -11,11 +11,11 @@ internal static class OutpostRules
 
     public static OutpostState Enter(GameState state, MapNode node)
     {
-        var profile = DifficultyProfile.For(state.Settings.Difficulty);
+        var profile = DifficultyProfile.For(state);
         return new OutpostState
         {
             NodeId = node.Id,
-            FuelPrice = Price(9, profile.PricePercent),
+            FuelPrice = FuelPrice(profile),
             RationsPrice = Price(7, profile.PricePercent),
             BaseRepairPrice = Price(40, profile.PricePercent),
             RepairAmount = 30,
@@ -143,6 +143,9 @@ internal static class OutpostRules
         RepairSeconds: outpost.RepairSeconds,
         HaggleAvailable: !outpost.HaggleUsed,
         RepairDiscountPercent: outpost.RepairDiscountPercent);
+
+    /// <summary>Outpost price of one fuel unit (<see cref="UnitSize"/> fuel) at this difficulty.</summary>
+    public static int FuelPrice(DifficultyProfile profile) => Price(9, profile.PricePercent);
 
     private static int Price(int basePrice, int percent) => Math.Max(1, (int)Math.Round(basePrice * percent / 100.0));
 }

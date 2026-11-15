@@ -55,6 +55,12 @@ internal static class CommandValidator
                 Require(outpostError is null, outpostError ?? string.Empty);
                 break;
 
+            case HailHaulerPlayerCommand:
+                Require(state.Phase == GamePhase.ChoosingRoute, "Finish what you're doing first.");
+                Require(EmergencyFuelRules.Quote(state) is not null, "No hauler answers out here; you have other options.");
+                Require(EmergencyFuelRules.Offer(state) is not null, "You can't afford the hauler's price.");
+                break;
+
             case UpgradePlayerCommand upgrade:
                 Require(Enum.IsDefined(upgrade.Command.Stat), "Unknown attribute.");
                 Require(state.UpgradePoints > 0, "You have no upgrade points to spend.");

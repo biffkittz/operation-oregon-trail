@@ -39,6 +39,9 @@ const choice = computed(() => routes.find((r) => r.nodeId === selected.value) ??
                 {{ nodeKindInfo[route.kind].label }} · {{ route.days }} {{ route.days === 1 ? 'day' : 'days' }} · {{ route.fuelCost }} fuel ·
                 {{ route.rationsCost }} rations<template v-if="!route.affordable"> · not enough fuel</template>
               </span>
+              <span v-if="route.warning" class="mt-1 block text-sm text-rust">
+                <span aria-hidden="true">⚠ </span><span class="sr-only">Warning: </span>{{ route.warning }}
+              </span>
             </span>
           </label>
         </li>

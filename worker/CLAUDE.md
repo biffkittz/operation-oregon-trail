@@ -56,6 +56,16 @@ releasing changes under "workflow code":
 
 Locally, `scripts/dev-deps.sh reset` wipes all saves if you break them.
 
+**Patches in use:** `emergency-fuel` (checked once at the start of `RunAsync`; it sets the non-serialized
+`GameState.EmergencyFuelEnabled`, which gates the hauler, the stranding rule and the retuned difficulty numbers
+via `DifficultyProfile.For(GameState)`).
+
+**Replay fixtures:** `Workflows/Histories/*.json` are real histories recorded on an older worker and replayed by
+`GameWorkflowTests`. To record one for a risky change: build the committed worker from a `git worktree`, run it
+against the local dev server with `Llm__Provider=Fake`, play a leg with the Temporal CLI, then
+`temporal workflow show -w <id> -r <first run id> -o json > ...`. Replace the `identity` and sticky task-queue
+values (they contain the user name and host) before committing.
+
 ## The engine decides, the LLM writes
 
 Rules pick the encounter, the tested stat and the stakes (`EncounterPlanner`, `DifficultyProfile`); dilemma options

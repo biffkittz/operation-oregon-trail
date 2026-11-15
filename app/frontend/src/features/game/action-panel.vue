@@ -5,6 +5,7 @@ import LoadingCursor from '@/components/ui/loading-cursor.vue'
 import type { SkirmishTally } from '@/lib/skirmish'
 import ChallengePrompt from './challenge-prompt.vue'
 import DilemmaPrompt from './dilemma-prompt.vue'
+import EmergencyFuelOffer from './emergency-fuel-offer.vue'
 import FinalePanel from './finale-panel.vue'
 import NarrativeCard from './narrative-card.vue'
 import OutpostPanel from './outpost-panel.vue'
@@ -53,6 +54,13 @@ function report(tally: SkirmishTally) {
         :busy="busy"
         :repair-in-progress="view.repairJobs.length > 0"
         @command="(c) => emit('command', c)"
+      />
+      <EmergencyFuelOffer
+        v-if="view.prompt.emergencyFuel"
+        :offer="view.prompt.emergencyFuel"
+        :scrip="view.resources.scrip"
+        :busy="busy"
+        @hail="emit('command', { kind: 'hail' })"
       />
       <RoutePicker
         v-model:selected="selectedRoute"

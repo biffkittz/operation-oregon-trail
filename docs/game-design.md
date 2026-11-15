@@ -29,6 +29,17 @@ so the story stays consistent and branches visibly.
 6. Repeat until you dock at Willamette Landing (**victory**), or the hull fails, the crew is lost, the crew
    mutinies (morale 0), or you are stranded without fuel (**defeat**).
 
+### Running out of fuel
+
+* **Route warnings.** A route is flagged when its destination has no fuel depot and you'd arrive without the
+  fuel for any route onward ("No fuel depot at New Hope Siding: you'd arrive with 1 fuel, and the shortest route
+  on needs 18."). It's an estimate: events and ally perks on the way can change the figure.
+* **Stranded at an outpost:** buy fuel; if you can't afford one unit, the voyage ends.
+* **Stranded anywhere else:** light the beacon and **hail a passing hauler**. After 1/2/3 days adrift
+  (Easy/Normal/Hard; rations and morale keep draining, and a hungry wait costs extra morale) the hauler sells
+  exactly enough fuel for the shortest route out at **3x** the outpost price. If you can't pay even that, the
+  voyage ends, and the epilogue states the real reason with your actual numbers.
+
 | Waypoint | Encounter | Tests |
 |---|---|---|
 | Outpost | Buy fuel and rations, commission a hull repair (a real-time timer), or **haggle** with the smith (a persuasion challenge) | Diplomacy |
@@ -82,26 +93,32 @@ keys shown on each drone, and drones stand still when the OS requests reduced mo
 |---|---|---|---|
 | Legs to Willamette Landing | 6 | 7 | 8 |
 | Starting fuel / rations / scrip / crew | 50 / 55 / 90 / 4 | 55 / 55 / 80 / 5 | 45 / 45 / 60 / 5 |
-| Fuel per day, hull wear per day, morale drift per day | 5, 3, 1 | 6, 4, 2 | 6, 4, 3 |
-| Travel event chance per leg | 35% | 40% | 50% |
+| Fuel per day, hull wear per day, morale drift per day | 5, 7, 2 | 6, 6, 2 | 6, 4, 3 |
+| Travel event chance per leg | 50% | 50% | 50% |
+| Hauler: days adrift before rescue, price vs outpost | 1, 3x | 2, 3x | 3, 3x |
 | Penalty / reward multipliers | 0.8 / 1.2 | 1.0 / 0.9 | 1.35 / 0.85 |
 | Outpost prices | 100% | 130% | 150% |
 | Time to answer a challenge / an emergency / a dilemma | 5:00 / 3:00 / none | 3:00 / 2:00 / 2:30 | 2:00 / 1:15 / 1:30 |
 | Skirmish: drones, seconds, speed, size | 12, 25, 0.8x, 56 px | 14, 22, 1.0x, 48 px | 16, 20, 1.3x, 40 px |
 | Repair job duration (real time) | 30 s | 45 s | 60 s |
 
-All of these knobs live in `worker/Oregon.Worker/Game/DifficultyProfile.cs`.
+All of these knobs live in `worker/Oregon.Worker/Game/DifficultyProfile.cs` (hauler: `Game/Rules/EmergencyFuelRules.cs`).
+Easy and Normal travel was made harsher on 2026-11-15 when the hauler arrived: stranding had been a large share of
+their defeats (without retuning, the hauler pushed victories to ~100% / ~88%). Easy wears the hull fastest on
+purpose: its repairs are cheaper and faster and its events pay more, so the pressure is recoverable. Saves that
+started before then keep the old numbers until their next leg (`DifficultyProfile.For(GameState)`).
 
 ## Balance
 
 `BalanceTests` plays 60 seeded voyages per difficulty with a sensible bot whose judge verdicts follow an
-"average player" spread (15% triumph, 35% success, 25% mixed, 18% setback, 7% disaster). Tuned on 2026-11-14:
+"average player" spread (15% triumph, 35% success, 25% mixed, 18% setback, 7% disaster). Retuned on 2026-11-15
+(the bot hails a hauler whenever it is stranded):
 
 | Difficulty | Victory rate | Typical defeats |
 |---|---|---|
-| Easy | ~90% (band 70-98%) | running out of fuel |
-| Normal | ~65% (band 40-80%) | fuel, hull failure |
-| Hard | ~30% (band 10-50%) | fuel, hull failure, mutiny |
+| Easy | ~92% (band 70-98%) | hull failure |
+| Normal | ~70% (band 40-80%) | hull failure, can't afford the hauler |
+| Hard | ~30% (band 10-50%) | hull failure, fuel, mutiny |
 
 Changing any rule or number must keep these rates inside their bands, or the test fails. Run with
 `BALANCE_REPORT=1` to print the rates (see [development-setup.md](development-setup.md)).

@@ -73,6 +73,11 @@ internal static class Bot
                     }
                 }
 
+                if (EmergencyFuelRules.Offer(state) is not null)
+                {
+                    return new HailHaulerPlayerCommand();
+                }
+
                 RouteOptionView route = TravelRules.Routes(state).Where(r => r.Affordable).OrderBy(r => r.Days).First();
                 return new RoutePlayerCommand(new ChooseRouteCommand(route.NodeId));
 

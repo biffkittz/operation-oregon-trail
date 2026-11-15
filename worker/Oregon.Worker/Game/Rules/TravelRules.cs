@@ -1,3 +1,4 @@
+using System.Globalization;
 using Oregon.Contracts.Model;
 using Oregon.Worker.Game.State;
 
@@ -11,7 +12,7 @@ internal static class TravelRules
 
     public static (int Fuel, int Rations) Cost(GameState state, int days)
     {
-        var profile = DifficultyProfile.For(state.Settings.Difficulty);
+        var profile = DifficultyProfile.For(state);
         double fuelFactor = AllyRules.Has(state, AllyPerk.Navigator) ? 0.75 : 1.0;
         double rationFactor = AllyRules.Has(state, AllyPerk.Quartermaster) ? 0.75 : 1.0;
         int fuel = (int)Math.Ceiling(profile.FuelPerDay * days * fuelFactor);
@@ -34,10 +35,37 @@ internal static class TravelRules
             }
 
             (int fuel, int rations) = Cost(state, edge.Days);
-            routes.Add(new RouteOptionView(target.Id, target.Name, target.Kind, edge.Days, fuel, rations, state.Resources.Fuel >= fuel));
+            bool affordable = state.Resources.Fuel >= fuel;
+            string? warning = affordable ? StrandingWarning(state, target, state.Resources.Fuel - fuel) : null;
+            routes.Add(new RouteOptionView(target.Id, target.Name, target.Kind, edge.Days, fuel, rations, affordable, warning));
         }
 
         return routes;
+    }
+
+    /// <summary>
+    /// Warns when a destination has no fuel depot and the ship would arrive without the fuel for any route out.
+    /// An estimate: events and ally perks on the way can change the arrival figure.
+    /// </summary>
+    private static string? StrandingWarning(GameState state, MapNode target, int arrivalFuel)
+    {
+        if (target.Kind is NodeKind.Outpost or NodeKind.Destination)
+        {
+            return null;
+        }
+
+        int[] onward = [.. state.Map.EdgesFrom(target.Id).Select(e => Cost(state, e.Days).Fuel)];
+        if (onward.Length == 0 || arrivalFuel >= onward.Min())
+        {
+            return null;
+        }
+
+        string hauler = state.EmergencyFuelEnabled
+            ? $" Only a passing hauler could sell you more: {EmergencyFuelRules.PriceMultiplier}x outpost prices, after days adrift."
+            : string.Empty;
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"No fuel depot at {target.Name}: you'd arrive with {arrivalFuel} fuel, and the shortest route on needs {onward.Min()}.{hauler}");
     }
 
     /// <summary>
@@ -47,7 +75,7 @@ internal static class TravelRules
     /// <returns>True when the crew went hungry.</returns>
     public static bool Travel(GameState state, MapEdge edge, Random random, List<ResourceChangeView> changes)
     {
-        var profile = DifficultyProfile.For(state.Settings.Difficulty);
+        var profile = DifficultyProfile.For(state);
         (int fuel, int rations) = Cost(state, edge.Days);
         bool starving = state.Resources.Rations < rations;
 

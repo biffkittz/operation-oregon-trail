@@ -29,7 +29,7 @@ internal static class EncounterPlanner
 
     public static ChallengePlan Hardship(GameState state, Random random)
     {
-        var profile = DifficultyProfile.For(state.Settings.Difficulty);
+        var profile = DifficultyProfile.For(state);
         (string situation, ResourceDelta penalty) = Hardships[random.Next(Hardships.Length)];
         return new ChallengePlan(
             ChallengeKind.Hardship,
@@ -44,7 +44,7 @@ internal static class EncounterPlanner
 
     public static ChallengePlan ForNode(GameState state, MapNode node, Random random)
     {
-        var profile = DifficultyProfile.For(state.Settings.Difficulty);
+        var profile = DifficultyProfile.For(state);
         int seconds = profile.ChallengeSeconds;
         return node.Kind switch
         {
@@ -98,7 +98,7 @@ internal static class EncounterPlanner
 
     public static ChallengePlan Haggle(GameState state)
     {
-        var profile = DifficultyProfile.For(state.Settings.Difficulty);
+        var profile = DifficultyProfile.For(state);
         OutpostState outpost = state.Outpost ?? throw new InvalidOperationException("Haggling requires an outpost.");
         return new ChallengePlan(
             ChallengeKind.Haggle,
@@ -128,7 +128,7 @@ internal static class EncounterPlanner
 
     public static SkirmishSpecView Skirmish(GameState state, Random random)
     {
-        var profile = DifficultyProfile.For(state.Settings.Difficulty);
+        var profile = DifficultyProfile.For(state);
         return new SkirmishSpecView(
             Seed: random.Next(1, int.MaxValue),
             Targets: profile.SkirmishTargets,

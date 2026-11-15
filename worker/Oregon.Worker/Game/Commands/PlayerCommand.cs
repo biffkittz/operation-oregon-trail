@@ -26,5 +26,8 @@ internal sealed record SkirmishPlayerCommand(SkirmishResultCommand Command) : Pl
 /// <summary>Use an outpost service.</summary>
 internal sealed record OutpostPlayerCommand(OutpostCommand Command) : PlayerCommand;
 
+/// <summary>Buy emergency fuel from a passing hauler.</summary>
+internal sealed record HailHaulerPlayerCommand : PlayerCommand;
+
 /// <summary>Spend an upgrade point.</summary>
 internal sealed record UpgradePlayerCommand(SpendUpgradeCommand Command) : PlayerCommand;

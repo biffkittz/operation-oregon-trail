@@ -21,7 +21,7 @@ export function makeView(overrides: Partial<GameView> = {}): GameView {
     allies: [],
     map: { nodes: [], edges: [], currentNodeId: 'c0r0', destinationNodeId: 'c7r0', columns: 8 },
     journal: [],
-    prompt: { narrative: null, routes: [], outpost: null, challenge: null, dilemma: null, skirmish: null },
+    prompt: { narrative: null, routes: [], outpost: null, challenge: null, dilemma: null, skirmish: null, emergencyFuel: null },
     repairJobs: [],
     finale: null,
     updatedAt: new Date().toISOString(),

@@ -531,5 +531,5 @@ terraform {
 
 ---
 
-
+I played through a game until I lost. The game presented the following explanation of loss: "Your voyage ends on day 9 in the shadow of New Hope Siding. Out of fuel with no scrip left to buy more, the starwagon drifts to a silent, permanent stop." However, the ship status card shows FUEL = 1 and SCRIP = 70, which contradicts the explanation for why the game ended.
 

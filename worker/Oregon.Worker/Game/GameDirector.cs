@@ -28,7 +28,7 @@ internal sealed class GameDirector(GameState state, IStoryteller storyteller, IG
 
     private DateTime Now => clock.UtcNow;
 
-    private DifficultyProfile Profile => DifficultyProfile.For(state.Settings.Difficulty);
+    private DifficultyProfile Profile => DifficultyProfile.For(state);
 
     /// <summary>Generates the map, asks the LLM to name it and shows the prologue.</summary>
     public async Task InitializeAsync()
@@ -76,6 +76,9 @@ internal sealed class GameDirector(GameState state, IStoryteller storyteller, IG
                 break;
             case UpgradePlayerCommand upgrade:
                 SpendUpgrade(upgrade.Command.Stat);
+                break;
+            case HailHaulerPlayerCommand:
+                await BuyEmergencyFuelAsync();
                 break;
             default:
                 throw new GameRuleException("Unknown command.");
@@ -160,7 +163,23 @@ internal sealed class GameDirector(GameState state, IStoryteller storyteller, IG
     {
         if (state.Status == GameStatus.Active && state.Phase == GamePhase.ChoosingRoute && EndgameRules.IsStranded(state))
         {
-            await FinishAsync(GameStatus.Defeat, "Out of fuel with no way to buy more, the wagon drifts to a stop.");
+            await FinishAsync(GameStatus.Defeat, EndgameRules.StrandedReason(state));
+        }
+    }
+
+    private async Task BuyEmergencyFuelAsync()
+    {
+        EmergencyFuelOfferView offer = EmergencyFuelRules.Offer(state)!;
+        bool hungry = EmergencyFuelRules.Buy(state, offer, changes: []);
+        string wait = string.Create(
+            CultureInfo.InvariantCulture,
+            $"Day {state.Day}: after {Plural(offer.WaitDays, "day")} adrift, a passing hauler answers your hail and pumps {offer.Fuel} fuel across for {offer.Price} scrip.");
+        Journal.Write(state, JournalEntryKind.Event, hungry ? $"{wait} The pantry ran dry while you waited." : wait, Now);
+
+        // Drifting wears on rations and morale, so the wait itself can end the voyage.
+        if (EndgameRules.DefeatReason(state) is { } defeat)
+        {
+            await FinishAsync(GameStatus.Defeat, defeat);
         }
     }
 
@@ -491,7 +510,7 @@ internal sealed class GameDirector(GameState state, IStoryteller storyteller, IG
         string facts = victory
             ? $"After {Plural(state.Day, "day")}, the {state.Settings.ShipName} reaches Willamette Landing with {state.Resources.Crew} souls aboard " +
               $"and {Plural(state.Allies.Count, "ally", "allies")}. Final score {score}."
-            : $"The voyage ends on day {state.Day}: {defeatReason} Final score {score}.";
+            : $"The voyage ends on day {state.Day}: {defeatReason} Final supplies: {Supplies(state.Resources)}. Final score {score}.";
         NarrationResult epilogue = await storyteller.NarrateAsync(new NarrationRequest(
             StoryContextFactory.Create(state),
             victory ? "victory epilogue: the wagon reaches Willamette Landing" : "defeat epilogue",
@@ -585,6 +604,9 @@ internal sealed class GameDirector(GameState state, IStoryteller storyteller, IG
         List<string> parts = [.. changes.Where(c => c.Delta != 0).Select(c => $"{c.Label} {c.Delta.ToString("+0;-0", CultureInfo.InvariantCulture)}")];
         return parts.Count == 0 ? "nothing gained or lost" : string.Join(", ", parts);
     }
+
+    private static string Supplies(ResourcePool r) => string.Create(CultureInfo.InvariantCulture,
+        $"fuel {r.Fuel}, rations {r.Rations}, scrip {r.Scrip}, hull {r.Hull}, crew {r.Crew}, morale {r.Morale}");
 
     private static string Plural(int count, string singular, string? plural = null) =>
         $"{count.ToString(CultureInfo.InvariantCulture)} {(count == 1 ? singular : plural ?? singular + "s")}";

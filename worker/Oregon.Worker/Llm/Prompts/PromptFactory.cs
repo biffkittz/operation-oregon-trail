@@ -115,7 +115,8 @@ internal static class PromptFactory
         {
             ["llm_task_description"] =
                 $"Narrate {request.Purpose} in at most {request.MaxSentences.ToString(CultureInfo.InvariantCulture)} sentences. " +
-                "Reflect every fact without contradicting it or inventing new consequences, and add a headline under 8 words.",
+                "Reflect every fact without contradicting it or inventing new consequences, and add a headline under 8 words. " +
+                "Never state or imply a cause, resource level or number that is not in the facts.",
             ["facts"] = request.Facts,
             ["context"] = Context(request.Context),
         };

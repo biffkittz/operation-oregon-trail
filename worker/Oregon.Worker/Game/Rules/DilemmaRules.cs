@@ -47,7 +47,7 @@ internal static class DilemmaRules
 
     public static Resolution Resolve(GameState state, ActiveDilemma dilemma, DilemmaOption option, Random random)
     {
-        var profile = DifficultyProfile.For(state.Settings.Difficulty);
+        var profile = DifficultyProfile.For(state);
         List<ResourceChangeView> changes = [];
         AllyState? joined = null;
         Verdict verdict;
@@ -99,7 +99,7 @@ internal static class DilemmaRules
     /// <summary>The hazard decides for a captain who hesitates past the deadline.</summary>
     public static Resolution ResolveTimeout(GameState state, ActiveDilemma dilemma)
     {
-        var profile = DifficultyProfile.For(state.Settings.Difficulty);
+        var profile = DifficultyProfile.For(state);
         List<ResourceChangeView> changes = [];
         ResourceRules.Apply(state, new ResourceDelta(Hull: -12, Morale: -6).Scale(profile.PenaltyMultiplier), changes);
         string summary = $"{dilemma.Title}: hesitated and the hazard decided";
