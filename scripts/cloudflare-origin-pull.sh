@@ -36,21 +36,42 @@ key="$dir/origin-pull.key"
 umask 077
 mkdir -p "$dir"
 
-if $rotate || [[ ! -f "$cert" || ! -f "$key" ]]; then
-  step "Generating a new origin-pull certificate in ${dir#"$REPO_ROOT"/}"
+# Cloudflare wants an end-entity (leaf) client certificate; `openssl req -x509` alone makes a CA (CA:TRUE), which
+# the API rejects with "1412 Missing leaf certificate". Earlier runs of this script made such certificates.
+is_leaf() { openssl x509 -in "$cert" -noout -ext basicConstraints 2>/dev/null | grep -q 'CA:FALSE'; }
+
+if $rotate || [[ ! -f "$cert" || ! -f "$key" ]] || ! is_leaf; then
+  step "Generating a new origin-pull client certificate in ${dir#"$REPO_ROOT"/}"
   openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1825 \
     -subj "/O=STARWAGON/CN=oregon origin pull ($zone)" \
-    -keyout "$key" -out "$cert" 2>/dev/null
+    -keyout "$key" -out "$cert" \
+    -config <(printf '%s\n' '[req]' 'distinguished_name = dn' 'x509_extensions = leaf' '[dn]' '[leaf]' \
+      'basicConstraints = critical, CA:FALSE' 'keyUsage = critical, digitalSignature, keyEncipherment' \
+      'extendedKeyUsage = clientAuth' 'subjectKeyIdentifier = hash') 2>/dev/null
+  is_leaf || die "Generated certificate is not a leaf certificate."
 fi
 
 # Calls the Cloudflare API without putting the token on the command line (visible in `ps`): curl reads its
 # Authorization header from a config file on an anonymous pipe.
 cf() {
-  local method="$1" path="$2"
+  local method="$1" path="$2" body
   shift 2
-  curl -sS --fail-with-body -X "$method" "https://api.cloudflare.com/client/v4$path" \
+  body="$(curl -sS -X "$method" "https://api.cloudflare.com/client/v4$path" \
     -H "Content-Type: application/json" "$@" \
-    --config <(printf 'header = "Authorization: Bearer %s"\n' "$CLOUDFLARE_API_TOKEN")
+    --config <(printf 'header = "Authorization: Bearer %s"\n' "$CLOUDFLARE_API_TOKEN"))"
+  # Cloudflare explains failures in "errors"; show them and stop instead of failing later on a missing field.
+  if ! python3 -I -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("success") else 1)' <<<"$body" 2>/dev/null; then
+    python3 -I -c '
+import json, sys
+try:
+    errors = json.load(sys.stdin).get("errors", [])
+except ValueError:
+    errors = [{"code": "-", "message": "non-JSON response"}]
+for e in errors:
+    print("Cloudflare error %s: %s" % (e.get("code"), e.get("message")), file=sys.stderr)' <<<"$body"
+    die "Cloudflare API call failed: $method $path"
+  fi
+  printf '%s' "$body"
 }
 
 json() { python3 -I -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
@@ -59,15 +80,20 @@ zone_id="$(cf GET "/zones?name=$zone" | json 'd["result"][0]["id"] if d["result"
 [[ -n "$zone_id" ]] || die "Zone $zone not found (or the token can't read it)."
 
 fingerprint="$(openssl x509 -in "$cert" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr 'A-F' 'a-f')"
-serial="$(openssl x509 -in "$cert" -noout -serial | cut -d= -f2 | tr 'A-F' 'a-f')"
 
-# Already uploaded? Cloudflare reports the serial number of each zone certificate.
-existing="$(cf GET "/zones/$zone_id/origin_tls_client_auth" | SERIAL="$serial" python3 -I -c '
-import json, os, sys
-want = os.environ["SERIAL"].lstrip("0")
+# Already uploaded? Compare SHA-256 fingerprints of the certificates Cloudflare returns (it reports serial numbers
+# in decimal, OpenSSL in hex, so fingerprints are the reliable match).
+existing="$(cf GET "/zones/$zone_id/origin_tls_client_auth" | FINGERPRINT="$fingerprint" python3 -I -c '
+import hashlib, json, os, ssl, sys
+want = os.environ["FINGERPRINT"]
 for c in json.load(sys.stdin)["result"]:
-    if str(c.get("serial_number", "")).lower().replace(":", "").lstrip("0") == want:
-        print(c["id"]); break')"
+    try:
+        der = ssl.PEM_cert_to_DER_cert(c.get("certificate", "").strip())
+    except ValueError:
+        continue
+    if hashlib.sha256(der).hexdigest() == want:
+        print(c["id"])
+        break')"
 
 if [[ -z "$existing" ]]; then
   step "Uploading the certificate to Cloudflare (zone $zone)"
