@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Contracts shared by the backend (Temporal client + web activity worker) and the game worker.
+    Anything that crosses a Temporal boundary (workflow inputs, updates, queries, activity payloads)
+    lives here so both deployables serialize exactly the same shapes.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Oregon.Contracts</RootNamespace>
+    <Description>Temporal workflow contracts and DTOs shared by the Oregon backend and worker.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Temporalio" />
+  </ItemGroup>
+</Project>

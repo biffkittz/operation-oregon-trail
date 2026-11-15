@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/app/">
+    <Project Path="app/backend.Tests/Oregon.Backend.Tests.csproj" />
+    <Project Path="app/backend/Oregon.Backend.csproj" />
+  </Folder>
+  <Folder Name="/shared/">
+    <Project Path="shared/Oregon.Contracts/Oregon.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/worker/">
+    <Project Path="worker/Oregon.Worker.Tests/Oregon.Worker.Tests.csproj" />
+    <Project Path="worker/Oregon.Worker/Oregon.Worker.csproj" />
+  </Folder>
+</Solution>

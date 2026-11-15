@@ -1,0 +1,185 @@
+{
+  // Open with: code oregon.code-workspace   (from a WSL terminal, so VS Code attaches to WSL)
+  // Folder roots keep each project's tooling (ESLint, C# Dev Kit, Terraform) scoped to its own directory.
+  "folders": [
+    { "name": "oregon", "path": "." },
+    { "name": "frontend", "path": "app/frontend" },
+    { "name": "backend", "path": "app/backend" },
+    { "name": "worker", "path": "worker" },
+    { "name": "contracts", "path": "shared/Oregon.Contracts" },
+    { "name": "infra", "path": "infra" }
+  ],
+
+  "settings": {
+    "files.eol": "\n",
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+    "files.exclude": {
+      "**/bin": true,
+      "**/obj": true,
+      "**/node_modules": true,
+      "**/.terraform": true,
+      "artifacts": true
+    },
+    "search.exclude": {
+      "**/dist": true,
+      "**/wwwroot": true,
+      "**/Migrations/*.Designer.cs": true,
+      "**/package-lock.json": true
+    },
+    "editor.formatOnSave": true,
+
+    // C#: formatting follows .editorconfig; the solution file drives C# Dev Kit.
+    "dotnet.defaultSolution": "oregon.slnx",
+    "[csharp]": { "editor.defaultFormatter": "ms-dotnettools.csharp" },
+
+    // Frontend: Prettier formats, ESLint + oxlint fix on save.
+    "[vue]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+    "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+    "[json]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+    "[jsonc]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+    "editor.codeActionsOnSave": { "source.fixAll.eslint": "explicit" },
+    "tailwindCSS.experimental.configFile": "app/frontend/src/assets/main.css",
+
+    // Terraform
+    "[terraform]": { "editor.defaultFormatter": "hashicorp.terraform" },
+    "[terraform-vars]": { "editor.defaultFormatter": "hashicorp.terraform" },
+
+    // Shell scripts
+    "shellcheck.enable": true
+  },
+
+  "extensions": {
+    "recommendations": [
+      "ms-vscode-remote.remote-wsl",
+      "ms-dotnettools.csdevkit",
+      "ms-dotnettools.csharp",
+      "Vue.volar",
+      "bradlc.vscode-tailwindcss",
+      "dbaeumer.vscode-eslint",
+      "oxc.oxc-vscode",
+      "esbenp.prettier-vscode",
+      "vitest.explorer",
+      "ms-playwright.playwright",
+      "hashicorp.terraform",
+      "ms-azuretools.vscode-containers",
+      "ms-azuretools.vscode-azurecontainerapps",
+      "ms-azuretools.vscode-azureresourcegroups",
+      "humao.rest-client",
+      "EditorConfig.EditorConfig",
+      "timonwong.shellcheck",
+      "bierner.markdown-mermaid"
+    ]
+  },
+
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Backend (ASP.NET)",
+        "type": "coreclr",
+        "request": "launch",
+        "preLaunchTask": "build: backend",
+        "program": "${workspaceFolder:oregon}/app/backend/bin/Debug/net10.0/Oregon.Backend.dll",
+        "cwd": "${workspaceFolder:oregon}/app/backend",
+        "env": {
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "ASPNETCORE_URLS": "http://localhost:5069"
+        },
+        "console": "integratedTerminal",
+        "stopAtEntry": false
+      },
+      {
+        "name": "Worker (Temporal)",
+        "type": "coreclr",
+        "request": "launch",
+        "preLaunchTask": "build: worker",
+        "program": "${workspaceFolder:oregon}/worker/Oregon.Worker/bin/Debug/net10.0/Oregon.Worker.dll",
+        "cwd": "${workspaceFolder:oregon}/worker/Oregon.Worker",
+        "env": { "DOTNET_ENVIRONMENT": "Development" },
+        "console": "integratedTerminal",
+        "stopAtEntry": false
+      },
+      {
+        "name": "Frontend (Chrome, Vite dev server)",
+        "type": "chrome",
+        "request": "launch",
+        "url": "http://localhost:5173",
+        "webRoot": "${workspaceFolder:frontend}/src",
+        "preLaunchTask": "frontend: dev server"
+      }
+    ],
+    "compounds": [
+      {
+        "name": "Full stack (backend + worker + frontend)",
+        "configurations": ["Backend (ASP.NET)", "Worker (Temporal)", "Frontend (Chrome, Vite dev server)"],
+        "preLaunchTask": "deps: up",
+        "stopAll": true
+      }
+    ]
+  },
+
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "deps: up",
+        "type": "shell",
+        "command": "${workspaceFolder:oregon}/scripts/dev-deps.sh up",
+        "problemMatcher": []
+      },
+      {
+        "label": "build: backend",
+        "type": "shell",
+        "command": "dotnet build ${workspaceFolder:oregon}/app/backend/Oregon.Backend.csproj",
+        "problemMatcher": "$msCompile"
+      },
+      {
+        "label": "build: worker",
+        "type": "shell",
+        "command": "dotnet build ${workspaceFolder:oregon}/worker/Oregon.Worker/Oregon.Worker.csproj",
+        "problemMatcher": "$msCompile"
+      },
+      {
+        "label": "frontend: dev server",
+        "type": "shell",
+        "command": "npm run dev",
+        "options": { "cwd": "${workspaceFolder:frontend}" },
+        "isBackground": true,
+        "problemMatcher": {
+          "owner": "vite",
+          "pattern": { "regexp": "^x^" },
+          "background": { "activesBegin": "VITE", "beginsPattern": "VITE", "endsPattern": "Local:" }
+        }
+      },
+      {
+        "label": "site: build and run",
+        "type": "shell",
+        "command": "${workspaceFolder:oregon}/buildAndRunSite.sh",
+        "problemMatcher": []
+      },
+      {
+        "label": "test: all .NET",
+        "type": "shell",
+        "command": "dotnet test --solution ${workspaceFolder:oregon}/oregon.slnx",
+        "problemMatcher": "$msCompile",
+        "group": "test"
+      },
+      {
+        "label": "test: frontend",
+        "type": "shell",
+        "command": "npm run check",
+        "options": { "cwd": "${workspaceFolder:frontend}" },
+        "problemMatcher": [],
+        "group": "test"
+      },
+      {
+        "label": "infra: fmt + validate",
+        "type": "shell",
+        "command": "terraform fmt -check -recursive && terraform validate",
+        "options": { "cwd": "${workspaceFolder:infra}" },
+        "problemMatcher": []
+      }
+    ]
+  }
+}

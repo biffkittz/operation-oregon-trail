@@ -1,41 +1,12 @@
-var builder = WebApplication.CreateBuilder(args);
+using Oregon.Backend.Infrastructure;
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+// Composition root. Service registration lives in BackendServiceRegistration, the pipeline in BackendPipeline.
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+builder.AddOregonBackend();
 
-var app = builder.Build();
+WebApplication app = builder.Build();
+app.UseOregonBackend();
+await app.RunAsync();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
-
-app.UseHttpsRedirection();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
-
-app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+/// <summary>Entry point. Partial and public so integration tests can use <c>WebApplicationFactory&lt;Program&gt;</c>.</summary>
+public partial class Program;

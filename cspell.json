@@ -1,0 +1,12 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "STARWAGON", "starwagon", "starwagons", "Willamette", "Oregon", "oregon", "joqqs", "playthroughs", "playthrough",
+    "slnx", "Allman", "eastus", "chiseled", "Npgsql", "Temporalio", "tmprl", "Gemini", "fontsource", "oxlint",
+    "Pinia", "vitest", "Testcontainers", "azapi", "azurerm", "tfvars", "tfstate", "asuid", "privatelink",
+    "Cascadia", "scrip", "Rustwater", "Saltlick", "haggle", "haggled", "Hobbs", "Marta", "biffkittz", "azq",
+    "shellcheck", "mulberry", "nvm", "dotnet", "csproj", "Kestrel", "SignalR", "rgba", "psql"
+  ],
+  "ignorePaths": ["**/node_modules/**", "**/bin/**", "**/obj/**", "**/Migrations/**", "**/package-lock.json", "infra/.terraform/**"]
+}

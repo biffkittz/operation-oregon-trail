@@ -1,0 +1,35 @@
+# REST Client examples (VS Code "humao.rest-client"). Log in first; the session cookie is reused.
+@host = http://localhost:5069
+
+### Log in (dev password from appsettings.Development.json)
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "password": "oregon" }
+
+### Session
+GET {{host}}/api/auth/session
+
+### Save slots
+GET {{host}}/api/games
+
+### Generate a story seed (runs a short Temporal workflow on the game worker)
+POST {{host}}/api/story-seeds
+Content-Type: application/json
+
+{ "tone": "Hopeful", "hint": "a traveling library" }
+
+### Start a new voyage
+POST {{host}}/api/games
+Content-Type: application/json
+
+{
+  "captainName": "Ada Vance",
+  "shipName": "Persistent Mule",
+  "tone": "Gritty",
+  "difficulty": "Normal",
+  "storySeed": "We haul the last seed vault from a dying orbital farm to Willamette Landing."
+}
+
+### Health
+GET {{host}}/healthz/ready

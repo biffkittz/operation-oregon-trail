@@ -6,21 +6,28 @@ import pluginVitest from '@vitest/eslint-plugin'
 import pluginOxlint from 'eslint-plugin-oxlint'
 import skipFormatting from 'eslint-config-prettier/flat'
 
-// To allow more languages other than `ts` in `.vue` files, uncomment the following lines:
-// import { configureVueProject } from '@vue/eslint-config-typescript'
-// configureVueProject({ scriptLangs: ['ts', 'tsx'] })
-// More info at https://github.com/vuejs/eslint-config-typescript/#advanced-setup
-
 export default defineConfigWithVueTs(
   {
     name: 'app/files-to-lint',
     files: ['**/*.{vue,ts,mts,tsx}'],
   },
 
-  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**']),
+  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**', '**/playwright-report/**']),
 
-  ...pluginVue.configs['flat/essential'],
+  // "recommended" (not just "essential") per the team's Vue style guide.
+  ...pluginVue.configs['flat/recommended'],
   vueTsConfigs.recommended,
+
+  {
+    name: 'app/vue-conventions',
+    rules: {
+      // File names are kebab-case; component names are PascalCase in templates.
+      'vue/component-name-in-template-casing': ['error', 'PascalCase', { registeredComponentsOnly: false }],
+      'vue/no-v-html': 'error',
+      'vue/require-default-prop': 'off',
+      'vue/multi-word-component-names': 'off',
+    },
+  },
 
   {
     ...pluginPlaywright.configs['flat/recommended'],

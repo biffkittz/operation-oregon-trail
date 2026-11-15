@@ -1,0 +1,44 @@
+# Local development dependencies for the oregon game.
+#
+#   docker compose up -d postgres            # just the database (if you run `temporal server start-dev` yourself)
+#   docker compose --profile temporal up -d  # database + Temporal dev server (UI at http://localhost:8233)
+#
+# scripts/dev-deps.sh wraps these commands and picks the right one automatically.
+name: oregon-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: oregon
+      POSTGRES_USER: oregon
+      # Local-only credentials; Azure uses a generated password stored in Key Vault.
+      POSTGRES_PASSWORD: oregon
+    ports:
+      # Host port 55432 avoids clashing with a locally installed PostgreSQL on 5432.
+      - "55432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oregon -d oregon"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  temporal:
+    # The Temporal CLI image; "server start-dev" runs an all-in-one server with the Web UI.
+    image: temporalio/temporal:1.10.0
+    profiles: ["temporal"]
+    # The image runs as the non-root "temporal" user, so the database lives in its home directory: a fresh named
+    # volume mounted there inherits the directory's ownership (a volume at a new path like /data is root-owned and
+    # the server fails with "unable to open database file").
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--ui-ip", "0.0.0.0", "--db-filename", "/home/temporal/temporal.db"]
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    volumes:
+      - temporal-home:/home/temporal
+
+volumes:
+  postgres-data:
+  temporal-home:

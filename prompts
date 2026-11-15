@@ -1,7 +1,12 @@
+Please challenge me on design and architectural choices and offer your own suggestions as well. Please prompt me for clarification if something doesn't make sense or doesn't quite fit best practices.
+
+---
 You must design and build a web app using Vue 3 and Typescript with an asp.net core backend. The app will present a login screen that asks for a password to log in to the site (no username required, there is a single password). The app login password will be stored in Azure Key Vault. The project also includes a Temporal worker project that contains the worker and workflow/activity code. The Temporal worker, workflows, and activities should be developed using .NET 10 and C#. The worker will be deployed as a separate container in the same Azure Container Apps environment as the web app container. `app` code is broken down into `backend` and `frontend` projects. I have already executed `npm create vue@latest` to create the frontend project. I have also executed
   `npm install tailwindcss @tailwindcss/vite` to install tailwindcss (styling should make use of tailwind). I have also
-  executed `npm install axios` to install axios. I have already executed `dotnet new webapi -o backend` to create the backend .NET 10 project under the `app` directory. Rewrite any existing code in `frontend` and `backend` as needed to achieve the desired goal.
+  executed `npm install axios` to install axios. I have already executed `dotnet new webapi -o backend` to create the backend .NET 10 project under the `app` directory. Rewrite any existing code in `frontend` and `backend` as needed to achieve the desired goal. I have also created a directory `worker` where you should build out the app's Temporal workflows and activities. The `worker` project will compile into a .NET core worker, and will have its own build and release process. The worker will be containerized and run alongside the app container in the Azure Container Apps environment.
+---
 
+---
 For the frontend Vue 3 project, you are an expert Senior Frontend Engineer specializing in Vue 3, Vite, and
   TypeScript. When writing Vue code, you must strictly follow these modern guidelines:
   1. Architecture: Always use the Composition API with `<script setup>` in TypeScript (<script setup lang="ts">). Never use the Options API.
@@ -11,7 +16,7 @@ For the frontend Vue 3 project, you are an expert Senior Frontend Engineer speci
   5. Composables: Abstract reusable logic into composables under the `composables/use*.ts` structure.
   6. UI Components: Use TailwindCSS for styling. Keep components modular, accessible (a11y), and semantic.
 
-For the backend .NET 10 project, you are an expert Senior Software Engineer specializing in C#, Entity Framework Core, and ASP.NET Core.
+For the backend .NET 10 project and the .NET 10 worker project, you are an expert Senior Software Engineer specializing in C#, Entity Framework Core, and ASP.NET Core.
   When writing C# code, you must strictly follow these modern guidelines:
   1. Syntax & Types:
     - Use 'var' ONLY when the type is obvious from the right side of the assignment.
@@ -26,28 +31,72 @@ For the backend .NET 10 project, you are an expert Senior Software Engineer spec
     - Include and respect CancellationToken parameters in asynchronous methods.
     - Do not emit deprecated or legacy framework conventions.
   REMINDER: Apply the rules above strictly. Ensure code contains no conversational text outside the markdown formatting block.
+---
+
+---
 
 Non-AI contributors to this project will use VS Code and WSL Ubuntu for development.
 
-You must provide detailed documentation on how to build and deploy the (frontend/backend) projects. For example,
+You must provide detailed documentation on how to build and deploy the (frontend/backend/worker) projects. For example,
   you should create a script called buildAndRunSite.sh that builds the frontend and backend projects,
   combines the two (e.g. package frontend resources and combine with backend to be served by 
   a web server), and runs the site locally.
 
 You must provide detailed documentation on how to set up the development environment
   and run the app locally. This includes documenting how to install dependencies, tooling, and any
-  required VS Code Extensions. Consider creating a VS Code workspace for the login-app project.
+  required VS Code Extensions. Consider creating a VS Code workspace for the oregon project.
 
 You must create sensible .gitignore files.
+
+You must create and update CLAUDE.md files.
 
 The app code will be well-documented. Not every line needs a comment. Comments in source will
   explain tricky or confusing regions of code and why architectural choices were made the way they were.
 
-The app is a retro text-based game. The app makes use of Temporal workflows to track game state and run LLM activities that produce structured JSON output based on text supplied by the player.
+The app is a retro single-player, text-heavy game. The app makes use of Temporal workflows to track game/player state and run LLM activities that produce structured JSON output based on text supplied by the player.
+---
 
-I want to incorporate Temporal workflows into a text-based game app that uses an LLM to create a response to player input and uses the response to update game state. For example, the player may be challenged with expressing how their character responds to a random adversarial event generated by the game. The player's response, along with a description of the adversarial event is sent to an LLM for evaluation (the LLM evaluation is encapsulated by a workflow activity). Player and game state is updated depending on how well the LLM judges the player's response, for example, perhaps the player moves to the next level in a skill and gains an ally based on the response. The game's theme should synthesize a star-trek-oregon-trail aesthetic: think Star Trek's futurism melded with the gritty existence of life on the Oregon Trail.
+---
+IMPORTANT:
+You must incorporate Temporal workflows into a single-player, text-heavy game app that uses Google Gemini to create structured JSON responses to player inputs, and uses the response to update game state. The player competes against an AI in combat, in problem-solving, and in other tests of skill. For example, the player may be challenged with expressing how their character responds to a random adversarial event generated by the game AI. The player's response, along with a description of the adversarial event is sent to an LLM for evaluation (the LLM evaluation is encapsulated by a workflow activity). Player and game state is updated depending on how well the LLM judges the player's response, for example, perhaps the player moves to the next level in a skill and gains an ally based on the response. The game's theme should synthesize a star-trek-and-oregon-trail aesthetic: think Star Trek's optimistic futurism melded with the shitty, gritty existence of life on the Oregon Trail. The game should track stats on various character attributes like creativity, morality, and resilience. The game tracks the progress of the player as they navigate a fast-paced, hostile world. Here are some example ideas that could be incorporated into the game:
+* The player needs to convince an NPC to perform some task, e.g. to perform metalworking services for a reduced price. The player responds with some text in an attempt to convince the NPC to do this. The text is sent to Gemini in a JSON-formatted prompt that might include fields like "challenge_description", "context", "player_response" and "llm_task_description". Ultimately, the LLM must use the information provided to it to generate a JSON-formatted response that includes the LLM's response to the task (e.g. the player did NOT convince the NPC to perform the metalworking service at reduced cost)
+* The player is asked to choose one of three options, and each choice branches the overall story in a distinct way.
+* The player is presented with flying entities in the game portal and must click on them accurately to win points. In proportion to how well the player performed in the click battle, the player receives a reward that can be used to level up in various ways.
+* There may be an activity that generates the text for the current game screen based on some context provided to it.
+* Each instance of the game should create a random game map for the player to explore
+* To initialize a game, the app asks for user-inputted story seed text; the player can alternatively tell the app to generate story seed text using an LLM.
+* The game engine may impose time limits on certain actions to create urgency.
 
+When a player first authenticates into the site, they should be presented with options to create a new game instance or jump back into one of up to 10 saved game instances. The player should also have the option to delete existing instances of the game.
 
+The app site should have a settings section where the player can configure game settings, e.g. "game tone: whimsy" or "game tone: morose", or "difficulty: easy".
+
+---
+Here are some things to consider as you architect and build the app:
+Building a text-based RPG using Temporal workflows involves modeling each player session or game world as a durable, long-running actor process. Because Temporal preserves execution state automatically across server crashes and restarts, you do not need a separate database or complex state-recovery logic to manage game progress.
+
+Core Architecture Concepts
+
+To map RPG mechanics onto Temporal's durable execution model, break your game down into core primitives:
+• Player Sessions as Workflows. Spawn a dedicated workflow instance for each player using their player ID as the workflow ID. This workflow holds the player's inventory, health, stats, and current location directly in memory.
+• Player Commands as Signals or Updates. When a user types a command (such as attack, move north, or use potion), send it to the running workflow via a Temporal Signal or Update. Updates are especially useful because they validate the action and return the resulting narrative text synchronously to the player's terminal or UI.
+• Inspecting State via Queries. Use Temporal Queries to let the front-end UI fetch read-only information—like character sheets, maps, or quest logs—without altering the game state.
+• Side Effects and AI Generation as Activities. Any non-deterministic work, such as calling an LLM to generate dynamic room descriptions, rolling external RNG, or updating a global leaderboard, must run inside a Temporal Activity. If an LLM API times out, Temporal automatically retries the activity without losing the player's turn.
+• Long-Running Sessions with Continue-As-New. Because text RPGs can span weeks or thousands of turns, use Temporal's Continue-As-New feature periodically to reset the workflow's event history while passing the current player state forward.
+
+Example Game Loop Flow
+
+1. Initialization. A player starts a new game, triggering a PlayerSessionWorkflow with starting stats and a starting room ID.
+2. Awaiting Input. The workflow pauses cleanly using a wait condition (workflow.wait_condition) until a player action arrives, consuming zero compute resources while waiting.
+3. Processing a Turn. The player submits "look around". The workflow receives the update, calls a GenerateNarrativeActivity (which might query an LLM or a story engine), updates the player's visited rooms in memory, and returns the text response.
+4. In-Game Timers. If a player gets poisoned or starts crafting an item, use workflow.sleep("5 minutes") to trigger delayed status effects or completions reliably, even if the player logs off.
+---
+
+The app may use SignalR to broadcast real-time game updates to the appropriate client.
+
+A maximum of 10 game instance workflows may execute simultaneously.
+
+---
 You must adhere to the following Vue 3 development guidelines:
   Architecture
     Favor the Composition API (setup functions and composables) over the Options API
@@ -183,8 +232,9 @@ You must adhere to the following Vue 3 development guidelines:
       Teleport for modals and overlays
       Plugin system for global utilities (i18n, analytics)
       Composable factories for parameterized logic
+---
 
-
+---
 You must adhere to the following C# coding guidelines:
   # C# Best Practices for AI Code Generation Instructions
 
@@ -350,6 +400,10 @@ You must adhere to the following C# coding guidelines:
   - Use secure communication protocols (HTTPS, TLS)
   - Implement proper error handling without exposing sensitive information
 
+  ---
+
+  ---
+
 You are an expert infrastructure and devops engineer specializing in Terraform and infrastructure as code principles. You must adhere
   to the following Terraform development guidelines:
   1. Use Latest Terraform and Providers
@@ -431,17 +485,51 @@ You are an expert infrastructure and devops engineer specializing in Terraform a
           CI pipeline
           Pre-commit hooks
           Enforce formatting, linting, and basic validation
+---
 
+---
+All infrastructure code belongs under the root `infra/` directory.
 You must create a Terraform project that builds the infrastructure
-  needed to run the game app in Azure Container Apps. The app will be available on the Internet 
+  needed to run the game app and Temporal worker in Azure Container Apps. The app will be available on the Internet 
   at the url https://oregon.biffkittz.com: DNS is managed by Cloudflare. Infrastructure components include, but are not limited to:
-    * Resource group
+    * Resource group named `rg-oregon`
     * VNet (azurerm_virtual_network)
     * Subnet (azurerm_virtual_network)
     * Azure Container App environment (azurerm_container_app_environment)
     * Azure Container App (azurerm_container_app)
     * Azure Database for PostgreSQL (azurerm_postgresql_flexible_server/azurerm_postgresql_flexible_server_database)
     * Azure Key Vault
-    * NOTE: An Azure Container Registry instance already exists under the account and should be used to upload images of the app and worker containers.
+    * NOTE: An Azure Container Registry named `crloginappdemo7fyguj.azurecr.io` already exists under the account and hopefully can be used to upload images of the app and worker containers.
 
 I've created a Temporal namespace for this project entitled `oregon.joqqs`.
+I have Cloudflare, Google Gemini, and Temporal API keys, as long as the password for the pfx in `.secrets`.
+
+Use the following to generate the Terraform backend.tf file (I will az login before running tf init):
+
+terraform {
+  backend "azurerm" {
+    resource_group_name  = "rg-terraform-state"
+    storage_account_name = "demonstration"
+    container_name       = "terraform"
+    key                  = "oregon.terraform.tfstate" # Path and filename inside the container
+
+    # Authenticate using Azure CLI credentials & Entra ID instead of Storage Keys
+    #use_cli              = true
+    #use_azuread_auth     = true
+  }
+}
+
+** All resources should be tagged with `project:oregon`
+
+** The Container App should use a single replica, as this is a demonstration environment.
+
+** The Azure Database for PostgreSQL instance should have size B1ms (smallest available size)
+
+** The Container App needs to be able to connect to the PostgreSQL database over a private link in the same VNet
+
+** TLS will terminate at the app container, and will use use the biffkittz-origin.pfx (password protected) under infra/.secrets (traffic for oregon.biffkittz.com is proxied through Cloudflare to the public IP of the container environment)
+
+---
+
+
+

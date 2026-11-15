@@ -1,0 +1,30 @@
+# Build context is the repository root for both images (app/Dockerfile, worker/Dockerfile).
+# SECURITY: secrets and infrastructure must never enter a build context. `az acr build` uploads the whole
+# context to Azure, and a careless COPY would bake files into an image.
+infra/
+**/.secrets/
+scratch
+**/*.pfx
+**/*.pem
+**/*.key
+**/.env
+**/.env.*
+**/secrets.env
+
+# Build outputs, dependencies and tooling state.
+.git/
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+artifacts/
+app/backend/wwwroot/
+**/TestResults/
+**/test-results/
+**/playwright-report/
+**/coverage/
+**/.vs/
+**/.vscode/
+**/.idea/
+**/*.user
+**/*.tsbuildinfo

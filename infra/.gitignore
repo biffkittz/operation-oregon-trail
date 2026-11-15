@@ -1,0 +1,21 @@
+# Terraform working state (the real state lives in Azure Storage; see backend.tf)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Secrets: certificates, API keys, filled-in env files. Never commit these.
+.secrets/
+*.pfx
+*.pem
+*.key
+secrets.env
+*.auto.tfvars

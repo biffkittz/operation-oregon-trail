@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <!--
+    Temporal game worker: hosts the GameWorkflow / StorySeedWorkflow and the LLM (Gemini) activities.
+    Built and released independently of the web app (see worker/Dockerfile and scripts/release-worker.sh).
+  -->
+  <PropertyGroup>
+    <RootNamespace>Oregon.Worker</RootNamespace>
+    <AssemblyName>Oregon.Worker</AssemblyName>
+    <UserSecretsId>oregon-worker</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <PackageReference Include="Temporalio.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../shared/Oregon.Contracts/Oregon.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oregon.Worker.Tests" />
+  </ItemGroup>
+</Project>
