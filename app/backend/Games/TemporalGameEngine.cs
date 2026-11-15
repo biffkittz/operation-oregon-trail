@@ -5,13 +5,15 @@ using Oregon.Contracts;
 using Oregon.Contracts.Model;
 using Oregon.Contracts.Workflows;
 using Temporalio.Api.Enums.V1;
+using Temporalio.Api.WorkflowService.V1;
 using Temporalio.Client;
 using Temporalio.Exceptions;
 
 namespace Oregon.Backend.Games;
 
 /// <summary><see cref="IGameEngine"/> backed by the Temporal client.</summary>
-internal sealed class TemporalGameEngine(ITemporalClient client, IOptions<TemporalSettings> options) : IGameEngine
+internal sealed partial class TemporalGameEngine(ITemporalClient client, IOptions<TemporalSettings> options, ILogger<TemporalGameEngine> logger)
+    : IGameEngine
 {
     private TemporalSettings Settings => options.Value;
 
@@ -111,15 +113,25 @@ internal sealed class TemporalGameEngine(ITemporalClient client, IOptions<Tempor
 
     public async Task<bool> IsHealthyAsync(CancellationToken cancellationToken)
     {
+        // Not Connection.CheckHealthAsync: that is the gRPC health service, which Temporal Cloud rejects for API-key
+        // clients ("Request unauthorized") while the local dev server allows it. DescribeNamespace is cheap, works on
+        // both, and also proves the credentials can reach this namespace.
         try
         {
-            return await client.Connection.CheckHealthAsync(options: new RpcOptions { CancellationToken = cancellationToken });
+            await client.WorkflowService.DescribeNamespaceAsync(
+                new DescribeNamespaceRequest { Namespace = client.Options.Namespace },
+                new RpcOptions { CancellationToken = cancellationToken, Timeout = TimeSpan.FromSeconds(Settings.QueryTimeoutSeconds) });
+            return true;
         }
-        catch (RpcException)
+        catch (RpcException ex)
         {
+            LogHealthCheckFailed(ex.Code, ex.Message);
             return false;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Temporal health check failed: {Code} {Detail}")]
+    private partial void LogHealthCheckFailed(RpcException.StatusCode code, string detail);
 
     private WorkflowHandle<IGameWorkflow> Handle(Guid gameId) => client.GetWorkflowHandle<IGameWorkflow>(WorkflowIds.ForGame(gameId));
 

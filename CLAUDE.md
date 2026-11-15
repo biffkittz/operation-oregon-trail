@@ -57,7 +57,8 @@ dotnet test --solution oregon.slnx            # all .NET tests (needs Docker; us
 TLS terminates at the Container Apps ingress with the Cloudflare origin PFX (not Kestrel). Postgres is a read
 model owned by the backend and written through the backend-hosted `ProjectGame` activity. 10 numbered save slots
 enforce the "10 running workflows" cap. Settings are defaults; games snapshot tone and difficulty. Gemini judge
-model `gemini-3.8-flash` (low thinking), narrator `gemini-3.5-flash-lite`. Region `eastus2`. Temporal Cloud
+model `gemini-3.8-flash` (low thinking), narrator `gemini-3.5-flash-lite`. Region `eastus2` (PostgreSQL server in
+`centralus` for capacity, via a private endpoint in the `eastus2` VNet). Temporal Cloud
 namespace `oregon.joqqs`, regional endpoint `us-east-2.aws.api.temporal.io:7233` (API-key auth).
 
 ## Environment gotchas

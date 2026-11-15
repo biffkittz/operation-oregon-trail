@@ -34,8 +34,11 @@ With the Windows `az` from WSL, strip `\r` from captured values (`az ... | tr -d
 ## Facts
 
 * State: `rg-terraform-state` / storage `demonstration` / container `terraform` / key `oregon.terraform.tfstate`.
-* Region `eastus2` (B1ms PostgreSQL is restricted in `eastus`; Temporal namespace is in AWS `us-east-2`).
+* Region `eastus2` (B1ms PostgreSQL is restricted in `eastus`; Temporal namespace is in AWS `us-east-2`). The
+  PostgreSQL server alone is in `centralus` (`postgres_location`; no B1ms capacity in `eastus2` on 2026-11-15),
+  reached through a private endpoint in the `eastus2` VNet.
 * Existing registry `crloginappdemo7fyguj` in `rg-loginapp-demo` (Basic, admin user disabled; apps pull with
   managed identities).
 * Cloudflare zone `biffkittz.com` (Free plan) already has SSL mode Full (strict) and WebSockets on.
+* The origin PFX must be 3DES/SHA-1 encoded (`.secrets/biffkittz-origin-azure.pfx`); see README "Origin certificate".
 * Plan baseline (2026-11-14): 33 resources to add on an empty subscription.

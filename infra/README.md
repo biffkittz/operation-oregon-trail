@@ -18,7 +18,7 @@ flowchart LR
         PE[pe-psql-oregon-*]
       end
     end
-    PG[(psql-oregon-*<br/>B1ms, PostgreSQL 17<br/>public access disabled)]
+    PG[(psql-oregon-*<br/>centralus, B1ms, PostgreSQL 17<br/>public access disabled)]
     KV[kv-oregon-*<br/>RBAC, 5 secrets]
     LAW[log-oregon]
     IDW[id-oregon-web]
@@ -86,7 +86,30 @@ are only re-sent when their `*_version` variable changes.
   (not per vault), and the operator gets `Key Vault Secrets Officer` only on this vault.
 * **Private database.** Public network access disabled; the app reaches the server through a private endpoint, and
   `privatelink.postgres.database.azure.com` makes the public FQDN resolve privately inside the VNet.
+* **Database in `centralus`.** B1ms had no capacity in `eastus2` at first deployment, so `postgres_location`
+  places only the server in `centralus`. The private endpoint (and all traffic to it) stays in the `eastus2` VNet
+  over the Microsoft backbone; expect roughly 25 ms extra per round trip. Moving the server back later means a
+  new server (dump and restore), since a flexible server's region can't be changed.
 * **Single replica.** Both apps run exactly one replica (`min = max = 1`), as requested for this demonstration.
+
+## Origin certificate
+
+Azure Container Apps only accepts PFX files encrypted with the legacy 3DES/SHA-1 scheme. OpenSSL 3 exports
+AES-256/PBES2 by default, which Azure reports as `InvalidCertificate: ... invalid or password is incorrect`.
+Re-export (same password; the key only passes through pipes):
+
+```bash
+cd infra && source .secrets/secrets.env && export PFXPW="$TF_VAR_origin_certificate_password"
+umask 077
+openssl pkcs12 -export \
+  -in    <(openssl pkcs12 -in .secrets/biffkittz-origin.pfx -passin env:PFXPW -nokeys) \
+  -inkey <(openssl pkcs12 -in .secrets/biffkittz-origin.pfx -passin env:PFXPW -nocerts -nodes) \
+  -passout env:PFXPW -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1 -iter 2048 \
+  -out .secrets/biffkittz-origin-azure.pfx
+```
+
+Check a PFX with `openssl pkcs12 -in <file> -passin env:PFXPW -info -noout`: it must show
+`pbeWithSHA1And3-KeyTripleDES-CBC`. Bump `origin_certificate_version` when replacing an uploaded certificate.
 
 ## Inputs
 
@@ -113,6 +136,7 @@ are only re-sent when their `*_version` variable changes.
 | `origin_certificate_password` | PFX password (**ephemeral, sensitive**) | required |
 | `origin_certificate_version` | Bump to re-upload the certificate | `1` |
 | `ingress_allowed_cidrs` | Allowed source ranges for the web ingress | Cloudflare IPv4 ranges |
+| `postgres_location` | Region for the PostgreSQL server only (private endpoint stays in `location`) | `null` (= `location`; prod: `centralus`) |
 | `postgres_sku_name` | Server SKU | `B_Standard_B1ms` |
 | `postgres_version` | PostgreSQL major version | `17` |
 | `postgres_storage_mb` | Storage | `32768` |

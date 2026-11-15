@@ -42,6 +42,8 @@ JSON API under `/api`, the SignalR hub at `/hubs/game` and health checks under `
 * Use `[LoggerMessage]` for hot-path logs; never log secrets, request bodies or player passwords.
 * Inject `TimeProvider` rather than calling `DateTimeOffset.UtcNow` (testability).
 * `Temporal:RunWebWorker=false` disables the embedded worker (tests do this).
+* The Temporal readiness check uses `DescribeNamespace`, not `Connection.CheckHealthAsync`: Temporal Cloud rejects
+  the gRPC health service for API-key clients ("Request unauthorized") even though the local dev server allows it.
 
 ## Security checklist (keep it true)
 

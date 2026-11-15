@@ -9,7 +9,8 @@ Two deployables, each with its own build and release path:
 
 Images live in the existing registry **`crloginappdemo7fyguj.azurecr.io`** (resource group `rg-loginapp-demo`).
 Everything else is created by Terraform in **`rg-oregon`** (`eastus2`, near the Temporal Cloud namespace
-`oregon.joqqs` in AWS `us-east-2`).
+`oregon.joqqs` in AWS `us-east-2`). The PostgreSQL server alone lives in `centralus` (`postgres_location`), reached
+through a private endpoint in the `eastus2` VNet.
 
 ```mermaid
 flowchart TB

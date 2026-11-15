@@ -200,6 +200,15 @@ variable "postgres_version" {
   default     = "17"
 }
 
+variable "postgres_location" {
+  description = <<-EOT
+    Region for the PostgreSQL server only; null uses `location`. The private endpoint stays in the VNet's region,
+    so the apps are unaffected apart from cross-region latency. Use it when the SKU has no capacity in `location`.
+  EOT
+  type        = string
+  default     = null
+}
+
 variable "postgres_storage_mb" {
   description = "Storage size in MB (32 GiB is the minimum)."
   type        = number

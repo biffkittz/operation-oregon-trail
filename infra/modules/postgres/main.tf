@@ -1,7 +1,8 @@
 # PostgreSQL Flexible Server reachable only through a private endpoint ("private link") in the VNet.
 #
 # Private endpoint (rather than VNet integration with a delegated subnet) is used because it can be added or
-# removed without recreating the server, and public access stays fully disabled.
+# removed without recreating the server, and public access stays fully disabled. It also lets the server live in
+# a different region from the VNet (cross-region private endpoints are supported), which VNet integration cannot.
 
 resource "azurerm_postgresql_flexible_server" "this" {
   name                          = var.server_name
@@ -41,7 +42,7 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
 
 resource "azurerm_private_endpoint" "this" {
   name                = "pe-${var.server_name}"
-  location            = var.location
+  location            = var.private_endpoint_location
   resource_group_name = var.resource_group_name
   subnet_id           = var.private_endpoint_subnet_id
   tags                = var.tags

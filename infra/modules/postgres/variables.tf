@@ -4,7 +4,12 @@ variable "server_name" {
 }
 
 variable "location" {
-  description = "Azure region."
+  description = "Azure region of the server (may differ from the VNet's region)."
+  type        = string
+}
+
+variable "private_endpoint_location" {
+  description = "Azure region of the private endpoint; must match the VNet that contains its subnet."
   type        = string
 }
 

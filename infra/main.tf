@@ -174,7 +174,8 @@ module "postgres" {
   source = "./modules/postgres"
 
   server_name                    = local.postgres_server_name
-  location                       = azurerm_resource_group.main.location
+  location                       = coalesce(var.postgres_location, azurerm_resource_group.main.location)
+  private_endpoint_location      = azurerm_resource_group.main.location
   resource_group_name            = azurerm_resource_group.main.name
   postgres_version               = var.postgres_version
   sku_name                       = var.postgres_sku_name
