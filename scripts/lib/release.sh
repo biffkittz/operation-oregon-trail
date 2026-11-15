@@ -83,6 +83,11 @@ release_image() {
     return 0
   fi
 
+  # Optional hook defined by the calling script (release-web.sh migrates the database with the new image first).
+  if declare -F before_rollout >/dev/null; then
+    before_rollout "$ref"
+  fi
+
   step "Rolling out $ref to $app"
   az containerapp update --name "$app" --resource-group "$RESOURCE_GROUP" --image "$ref" --output none
   local revision state

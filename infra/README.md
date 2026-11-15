@@ -13,16 +13,18 @@ flowchart LR
         ENV[cae-oregon<br/>static IP, origin cert, Log Analytics]
         WEB[ca-oregon-web :8080<br/>ingress: Cloudflare IPs only<br/>custom domain SNI]
         WRK[ca-oregon-worker<br/>no ingress]
+        JOB[job-oregon-migrate<br/>manual trigger]
       end
       subgraph SPE[snet-oregon-pe 10.42.2.0/24]
         PE[pe-psql-oregon-*]
       end
     end
     PG[(psql-oregon-*<br/>centralus, B1ms, PostgreSQL 17<br/>public access disabled)]
-    KV[kv-oregon-*<br/>RBAC, 5 secrets]
+    KV[kv-oregon-*<br/>RBAC, secrets + data-protection key]
     LAW[log-oregon]
     IDW[id-oregon-web]
     IDK[id-oregon-worker]
+    IDM[id-oregon-migrate]
     DNSZ[privatelink.postgres.database.azure.com]
   end
   ACR[(crloginappdemo7fyguj<br/>rg-loginapp-demo)]
@@ -31,8 +33,10 @@ flowchart LR
   DNSZ -. resolves .- PE
   IDW -- AcrPull --> ACR
   IDK -- AcrPull --> ACR
-  IDW -- Secrets User: login, db, temporal --> KV
+  IDW -- Secrets User: login, app db, temporal; Crypto User: data-protection key --> KV
   IDK -- Secrets User: temporal, gemini --> KV
+  IDM -- Secrets User: admin db, app-role password --> KV
+  JOB --> PE
 ```
 
 ## Layout
@@ -48,8 +52,8 @@ flowchart LR
 | `secrets.env.example` | Template for `.secrets/secrets.env` (secret `TF_VAR_*`, Cloudflare token, subscription) |
 | `modules/network` | VNet, delegated Container Apps subnet, private-endpoint subnet, private DNS zone and link |
 | `modules/postgres` | Flexible server (B1ms), database, private endpoint with DNS zone group |
-| `modules/container_app` | One Container App: identity, ACR pull, Key Vault references, optional ingress (IP allow-list) and probes. Used twice. |
-| `modules/cloudflare_dns` | Verification TXT and proxied A record |
+| `modules/container_app` | One Container App: identity, ACR pull, Key Vault references, optional ingress (IP allow-list, client-certificate mode) and probes. Used twice. |
+| `modules/cloudflare_dns` | Verification TXT, proxied A record, zone minimum TLS version, Authenticated Origin Pulls switch |
 
 ## Usage
 
@@ -80,6 +84,20 @@ are only re-sent when their `*_version` variable changes.
 * **TLS at the ingress.** Cloudflare (SSL mode Full (strict)) connects to the environment's static IP; the
   Container Apps ingress presents the Cloudflare Origin CA certificate for `oregon.biffkittz.com` (SNI binding) and
   forwards plain HTTP to the container on port 8080.
+* **TLS 1.2+ end to end.** Cloudflare's edge (what visitors and SSL Labs see) rejects TLS < 1.2 via the
+  zone-wide `min_tls_version` setting; the Container Apps ingress already does. The Cloudflare token needs
+  **Zone Settings: Edit** on the zone in addition to Zone: Read and DNS: Edit.
+* **Least-privilege database access.** The web app connects as `oregon_app` (read/write data, no DDL). Migrations
+  and role management run in `job-oregon-migrate` (manual-trigger Container Apps job, web image with `migrate`),
+  whose identity alone can read the admin connection string. Both passwords are generated ephemerally and stored
+  Key-Vault-first; they rotate together with `postgres_password_version`.
+* **Session keys encrypted at rest.** The web app's Data Protection key ring (in Postgres) is wrapped with the Key
+  Vault RSA key `data-protection`; the web identity has `Key Vault Crypto User` on that key only. The operator gets
+  `Key Vault Crypto Officer` on the vault to create it.
+* **Our zone only (Authenticated Origin Pulls).** The Cloudflare IP allow-list admits every Cloudflare customer.
+  With `origin_pull_certificate_sha256` set, Cloudflare presents our own client certificate (uploaded by
+  `scripts/cloudflare-origin-pull.sh`, outside Terraform, because the Cloudflare certificate resources would keep
+  its private key in state), the web ingress requires a client certificate, and the app pins the thumbprint.
 * **Cloudflare-only ingress.** `ingress_allowed_cidrs` defaults to Cloudflare's published IPv4 ranges. Update it if
   Cloudflare publishes changes (https://www.cloudflare.com/ips-v4).
 * **Least privilege.** Separate user-assigned identities per app, `Key Vault Secrets User` granted per secret
@@ -132,6 +150,8 @@ Check a PFX with `openssl pkcs12 -in <file> -passin env:PFXPW -info -noout`: it 
 | `cloudflare_zone_name` | Cloudflare zone | `biffkittz.com` |
 | `custom_domain` | Public hostname | `oregon.biffkittz.com` |
 | `cloudflare_proxied` | Proxy the A record (required for the origin cert) | `true` |
+| `origin_pull_certificate_sha256` | Thumbprint of our Cloudflare origin-pull certificate; enables Authenticated Origin Pulls, requires client certs at the ingress and pins them in the app (not secret) | `null` (off) |
+| `cloudflare_min_tls_version` | Minimum TLS version at Cloudflare's edge (**zone-wide**; TLS 1.3 stays on) | `1.2` |
 | `origin_certificate_path` | PFX path relative to `infra/` | `.secrets/biffkittz-origin.pfx` |
 | `origin_certificate_password` | PFX password (**ephemeral, sensitive**) | required |
 | `origin_certificate_version` | Bump to re-upload the certificate | `1` |

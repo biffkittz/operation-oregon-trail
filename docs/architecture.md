@@ -9,7 +9,7 @@
 | **Game worker** (`worker/Oregon.Worker`) | `GameWorkflow` (one per save), `StorySeedWorkflow`, game rules, Gemini activities | Temporal (worker on `oregon-game`), Gemini |
 | **Contracts** (`shared/Oregon.Contracts`) | Workflow interfaces, update/query payloads, views, task queue and workflow names | compiled into backend and worker |
 | **Temporal Cloud** | Durable execution: game state, timers, retries, history | |
-| **PostgreSQL** | Read model: save slots, journal, settings, ASP.NET Data Protection keys | |
+| **PostgreSQL** | Read model: save slots, journal, settings, ASP.NET Data Protection keys (wrapped by a Key Vault key) | Web app connects as `oregon_app` (no DDL); migrations run in `job-oregon-migrate` as admin |
 | **Gemini** | Writes the world, encounters and narration; judges free-text responses | |
 
 ## Who owns which data
@@ -152,7 +152,7 @@ refetches. Every snapshot includes the server time so countdowns correct for a s
 
 ## Known limitations
 
-* Single web replica: scaling out needs a SignalR backplane, and migrations should move to a deployment job.
+* Single web replica: scaling out needs a SignalR backplane and a shared store for the failed-login brake.
 * The click battle is scored client-side; the workflow bounds and plausibility-checks the result, but a
   determined player can still forge a good score.
 * One shared password means one shared identity: there are no per-user saves.

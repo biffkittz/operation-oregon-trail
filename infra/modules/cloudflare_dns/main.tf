@@ -2,6 +2,7 @@
 #  - TXT asuid.<host>: proves domain ownership to Azure Container Apps (custom domain verification).
 #  - A <host>: points at the environment's static inbound IP, proxied by Cloudflare. Cloudflare terminates the
 #    visitor's TLS and re-encrypts to the origin (SSL mode "Full (strict)") using the Cloudflare Origin CA cert.
+#  - Zone setting min_tls_version: the oldest TLS version Cloudflare's edge accepts from visitors.
 
 data "cloudflare_zone" "this" {
   filter = {
@@ -27,4 +28,23 @@ resource "cloudflare_dns_record" "app" {
   ttl     = 1 # "automatic"; required for proxied records
   proxied = var.proxied
   comment = "STARWAGON web app on Azure Container Apps (managed by Terraform, oregon)"
+}
+
+# Minimum TLS version at Cloudflare's edge (what visitors and SSL Labs see; the Container Apps origin already
+# refuses TLS < 1.2). This is ZONE-WIDE on the Free plan: it applies to every hostname in the zone, not just this
+# app. TLS 1.3 stays enabled; this only sets the floor. The setting always exists in Cloudflare, so creating this
+# resource takes over its value, and destroying it leaves the last value in place.
+resource "cloudflare_zone_setting" "min_tls_version" {
+  zone_id    = data.cloudflare_zone.this.id
+  setting_id = "min_tls_version"
+  value      = var.min_tls_version
+}
+
+# Zone-level Authenticated Origin Pulls: Cloudflare presents a client certificate to origins. With our own
+# certificate uploaded (scripts/cloudflare-origin-pull.sh) it presents that one, which only our zone has; the app
+# pins its thumbprint. Origins that don't ask for a client certificate (other hostnames in the zone) are unaffected.
+resource "cloudflare_authenticated_origin_pulls_settings" "this" {
+  count   = var.authenticated_origin_pulls ? 1 : 0
+  zone_id = data.cloudflare_zone.this.id
+  enabled = true
 }

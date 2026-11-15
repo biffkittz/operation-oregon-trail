@@ -1,3 +1,5 @@
+using Azure.Identity;
+using Azure.Core;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
@@ -32,7 +34,7 @@ public static class BackendServiceRegistration
         services.AddOptions<DatabaseSettings>().Bind(configuration.GetSection(DatabaseSettings.SectionName));
         services.AddOptions<ProxySettings>().Bind(configuration.GetSection(ProxySettings.SectionName));
 
-        AddData(services);
+        AddData(services, builder.Configuration);
         AddAuthentication(services, isDevelopment);
         AddRateLimiting(services);
         AddTemporal(services, configuration);
@@ -59,16 +61,20 @@ public static class BackendServiceRegistration
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<ClientIpResolver>();
         services.AddSingleton<IPasswordVerifier, PasswordVerifier>();
+        services.AddSingleton<LoginThrottle>();
         services.AddScoped<ISaveSlotService, SaveSlotService>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<CommandContext>();
         return builder;
     }
 
-    private static void AddData(IServiceCollection services)
+    /// <summary>Registers <see cref="OregonDbContext"/> (shared with the <c>migrate</c> command).</summary>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The same service collection.</returns>
+    public static IServiceCollection AddOregonDbContext(this IServiceCollection services)
     {
         // Resolved lazily from IConfiguration so tests (and Key Vault-backed env vars) can supply it late.
-        services.AddDbContext<OregonDbContext>((provider, options) =>
+        return services.AddDbContext<OregonDbContext>((provider, options) =>
         {
             string connectionString = provider.GetRequiredService<IConfiguration>().GetConnectionString("Oregon") ?? string.Empty;
             if (string.IsNullOrWhiteSpace(connectionString))
@@ -78,12 +84,30 @@ public static class BackendServiceRegistration
 
             options.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
         });
+    }
 
-        // Must be the first hosted service: the projection worker and Kestrel start only after migrations.
+    private static void AddData(IServiceCollection services, ConfigurationManager configuration)
+    {
+        services.AddOregonDbContext();
+
+        // Must be the first hosted service: the projection worker and Kestrel start only after migrations. In
+        // production it is off (Database:MigrateOnStartup=false): the app's database role cannot run DDL, and the
+        // migrate job applies migrations as the admin instead.
         services.AddHostedService<DatabaseMigrator>();
 
-        // Keys in Postgres keep session cookies valid across container restarts and new revisions.
-        services.AddDataProtection().SetApplicationName("oregon").PersistKeysToDbContext<OregonDbContext>();
+        // Keys in Postgres keep session cookies valid across container restarts and new revisions. In Azure the key
+        // ring is wrapped with a Key Vault key, so reading the database alone is not enough to forge a session.
+        IDataProtectionBuilder dataProtection = services.AddDataProtection()
+            .SetApplicationName("oregon")
+            .PersistKeysToDbContext<OregonDbContext>();
+        DataProtectionSettings keyProtection = configuration.GetSection(DataProtectionSettings.SectionName).Get<DataProtectionSettings>() ?? new();
+        if (!string.IsNullOrWhiteSpace(keyProtection.KeyVaultKeyId))
+        {
+            TokenCredential credential = string.IsNullOrWhiteSpace(keyProtection.ManagedIdentityClientId)
+                ? new DefaultAzureCredential()
+                : new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(keyProtection.ManagedIdentityClientId));
+            dataProtection.ProtectKeysWithAzureKeyVault(new Uri(keyProtection.KeyVaultKeyId), credential);
+        }
     }
 
     private static void AddAuthentication(IServiceCollection services, bool isDevelopment)
@@ -103,6 +127,7 @@ public static class BackendServiceRegistration
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return Task.CompletedTask;
             };
+            options.Events.OnValidatePrincipal = AuthEndpoints.ValidateSessionAsync;
             options.Events.OnRedirectToAccessDenied = context =>
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;

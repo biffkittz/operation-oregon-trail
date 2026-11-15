@@ -1,3 +1,4 @@
+using Oregon.Backend.Auth;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ public abstract class ApiTestBase(BackendFactory factory) : IAsyncLifetime
         await db.Games.ExecuteDeleteAsync();
         await db.Settings.ExecuteDeleteAsync();
         factory.Engine.Started.Clear();
+        factory.Services.GetRequiredService<LoginThrottle>().Reset();
     }
 
     public ValueTask DisposeAsync()

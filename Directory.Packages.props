@@ -22,6 +22,12 @@
     <PackageVersion Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.15" />
   </ItemGroup>
 
+  <ItemGroup Label="Azure">
+    <!-- Encrypts the ASP.NET Data Protection key ring (session cookie keys) with a Key Vault key. -->
+    <PackageVersion Include="Azure.Extensions.AspNetCore.DataProtection.Keys" Version="1.6.5" />
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+  </ItemGroup>
+
   <ItemGroup Label="Data">
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.15" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />

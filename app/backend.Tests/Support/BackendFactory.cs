@@ -22,6 +22,9 @@ public sealed class BackendFactory : WebApplicationFactory<Program>, IAsyncLifet
 
     public FakeGameEngine Engine { get; } = new();
 
+    /// <summary>Gets the superuser connection string of the test PostgreSQL container.</summary>
+    public string AdminConnectionString => _postgres.GetConnectionString();
+
     public async ValueTask InitializeAsync()
     {
         await _postgres.StartAsync();

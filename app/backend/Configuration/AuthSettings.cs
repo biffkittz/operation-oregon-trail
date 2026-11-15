@@ -17,4 +17,11 @@ public sealed class AuthSettings
     /// <summary>Gets or sets how long a session cookie lives (sliding).</summary>
     [Range(1, 720)]
     public int SessionHours { get; set; } = 12;
+
+    /// <summary>
+    /// Gets or sets the site-wide number of failed sign-ins per minute (from all addresses together) after which
+    /// sign-in is refused until the minute has passed. Complements the per-IP rate limit.
+    /// </summary>
+    [Range(1, 10_000)]
+    public int MaxFailedLoginsPerMinute { get; set; } = 30;
 }

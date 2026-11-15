@@ -19,6 +19,8 @@ public static class BackendPipeline
         ArgumentNullException.ThrowIfNull(app);
         StaticFileOptions staticFiles = new() { OnPrepareResponse = context => SetCacheHeaders(context.Context, context.File.Name) };
 
+        // First: anything that did not come through our Cloudflare zone stops here (no-op when no pin is configured).
+        app.UseMiddleware<OriginCertificateMiddleware>();
         app.UseForwardedHeaders();
         app.UseExceptionHandler();
         app.UseStatusCodePages();

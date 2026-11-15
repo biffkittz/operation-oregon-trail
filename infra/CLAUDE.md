@@ -18,7 +18,11 @@ outputs, diagram) and `../docs/build-and-deploy.md` (procedure).
   before adding providers or external modules.
 * `terraform fmt -recursive`, `terraform validate` and a reviewed `plan` before any change is considered done;
   update `README.md` (inputs/outputs tables, diagram) in the same change.
-* Container images are released outside Terraform (`lifecycle.ignore_changes` on the image). Don't remove that.
+* Container images are released outside Terraform (`lifecycle.ignore_changes` on the image, for both apps and the
+  migrate job). Don't remove that.
+* The web app must never get the admin connection string: only `id-oregon-migrate` reads it.
+* Don't manage the origin-pull certificate in Terraform (`cloudflare_authenticated_origin_pulls_certificate` stores
+  the private key in state); `scripts/cloudflare-origin-pull.sh` uploads it.
 
 ## Running
 
@@ -39,6 +43,7 @@ With the Windows `az` from WSL, strip `\r` from captured values (`az ... | tr -d
   reached through a private endpoint in the `eastus2` VNet.
 * Existing registry `crloginappdemo7fyguj` in `rg-loginapp-demo` (Basic, admin user disabled; apps pull with
   managed identities).
-* Cloudflare zone `biffkittz.com` (Free plan) already has SSL mode Full (strict) and WebSockets on.
+* Cloudflare zone `biffkittz.com` (Free plan) has SSL mode Full (strict) and WebSockets on (set by hand), and a
+  zone-wide minimum TLS version of 1.2 (Terraform, `cloudflare_min_tls_version`; token needs Zone Settings: Edit).
 * The origin PFX must be 3DES/SHA-1 encoded (`.secrets/biffkittz-origin-azure.pfx`); see README "Origin certificate".
 * Plan baseline (2026-11-14): 33 resources to add on an empty subscription.

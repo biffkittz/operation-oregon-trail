@@ -190,7 +190,9 @@ server on first run.
 * Database shell: `PGPASSWORD=oregon psql -h localhost -p 55432 -U oregon oregon`
 * Inspect a voyage: `temporal workflow list`, then `temporal workflow show --workflow-id oregon-game-<id>`
 * New EF Core migration (after changing `app/backend/Data`):
-  `dotnet tool run dotnet-ef migrations add <Name> --project app/backend --output-dir Data/Migrations`
+  `dotnet tool run dotnet-ef migrations add <Name> --project app/backend --output-dir Data/Migrations`.
+  Locally the app applies migrations at startup; in Azure the migrate job does (`dotnet Oregon.Backend.dll migrate`),
+  and the web app's role can't run DDL, so keep each migration compatible with the previous release.
   (it is applied automatically when the backend starts)
 
 ## 8. Troubleshooting

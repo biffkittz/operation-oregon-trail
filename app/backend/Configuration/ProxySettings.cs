@@ -11,4 +11,11 @@ public sealed class ProxySettings
     /// because Container Apps ingress is IP-restricted to Cloudflare's ranges, so the header cannot be spoofed.
     /// </summary>
     public bool TrustCloudflareHeaders { get; set; }
+
+    /// <summary>
+    /// Gets or sets the SHA-256 thumbprint of our Cloudflare origin-pull client certificate. When set, requests
+    /// without that certificate in <c>X-Forwarded-Client-Cert</c> are refused (see
+    /// <see cref="Infrastructure.OriginCertificateMiddleware"/>). Not a secret: it identifies a public certificate.
+    /// </summary>
+    public string? OriginClientCertificateSha256 { get; set; }
 }

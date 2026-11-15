@@ -42,6 +42,7 @@ resource "azurerm_container_app" "this" {
       target_port                = ingress.value.target_port
       transport                  = "auto"
       allow_insecure_connections = false
+      client_certificate_mode    = ingress.value.client_certificate_mode
 
       traffic_weight {
         latest_revision = true

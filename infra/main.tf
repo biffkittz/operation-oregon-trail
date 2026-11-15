@@ -65,12 +65,21 @@ resource "azurerm_user_assigned_identity" "worker" {
   tags                = local.tags
 }
 
+# The migration job is the only workload that can read the database admin connection string.
+resource "azurerm_user_assigned_identity" "migrate" {
+  name                = "id-${var.name_prefix}-migrate"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = local.tags
+}
+
 # User-assigned (not system-assigned) identities exist before the apps, so the very first revision can pull
 # images and resolve Key Vault references.
 resource "azurerm_role_assignment" "acr_pull" {
   for_each = {
-    web    = azurerm_user_assigned_identity.web.principal_id
-    worker = azurerm_user_assigned_identity.worker.principal_id
+    web     = azurerm_user_assigned_identity.web.principal_id
+    worker  = azurerm_user_assigned_identity.worker.principal_id
+    migrate = azurerm_user_assigned_identity.migrate.principal_id
   }
 
   scope                = data.azurerm_container_registry.shared.id
@@ -189,18 +198,22 @@ module "postgres" {
   tags                           = local.tags
 }
 
-resource "azurerm_key_vault_secret" "postgres_connection_string" {
-  name         = "postgres-connection-string"
-  key_vault_id = azurerm_key_vault.main.id
-  # VerifyFull validates the server certificate against the public CA chain shipped in the container image.
-  value_wo = join(";", [
-    "Host=${module.postgres.fqdn}",
-    "Port=5432",
-    "Database=${module.postgres.database_name}",
-    "Username=${module.postgres.administrator_login}",
-    "Password=${ephemeral.azurerm_key_vault_secret.postgres_admin_password.value}",
-    "SSL Mode=VerifyFull",
-  ])
+# Least-privilege application role (created by the migrate job, which connects as the admin). Same Key-Vault-first
+# pattern as the admin password; both rotate together with postgres_password_version.
+ephemeral "random_password" "postgres_app" {
+  length           = 32
+  special          = true
+  override_special = "-_.~" # safe inside an Npgsql connection string (no ; = ' ")
+  min_lower        = 2
+  min_upper        = 2
+  min_numeric      = 2
+  min_special      = 1
+}
+
+resource "azurerm_key_vault_secret" "postgres_app_password" {
+  name             = "postgres-app-password"
+  key_vault_id     = azurerm_key_vault.main.id
+  value_wo         = ephemeral.random_password.postgres_app.result
   value_wo_version = var.postgres_password_version
   content_type     = "text/plain"
   tags             = local.tags
@@ -208,14 +221,89 @@ resource "azurerm_key_vault_secret" "postgres_connection_string" {
   depends_on = [azurerm_role_assignment.deployer_secrets_officer]
 }
 
+ephemeral "azurerm_key_vault_secret" "postgres_app_password" {
+  name         = azurerm_key_vault_secret.postgres_app_password.name
+  key_vault_id = azurerm_key_vault.main.id
+  version      = azurerm_key_vault_secret.postgres_app_password.version
+}
+
+# VerifyFull validates the server certificate against the public CA chain shipped in the container image.
+locals {
+  postgres_connection_base = [
+    "Host=${module.postgres.fqdn}",
+    "Port=5432",
+    "Database=${module.postgres.database_name}",
+    "SSL Mode=VerifyFull",
+  ]
+}
+
+# Admin connection: read only by the migrate job (migrations, role management).
+resource "azurerm_key_vault_secret" "postgres_admin_connection_string" {
+  name = "postgres-admin-connection-string"
+  value_wo = join(";", concat(local.postgres_connection_base, [
+    "Username=${module.postgres.administrator_login}",
+    "Password=${ephemeral.azurerm_key_vault_secret.postgres_admin_password.value}",
+  ]))
+  key_vault_id     = azurerm_key_vault.main.id
+  value_wo_version = var.postgres_password_version
+  content_type     = "text/plain"
+  tags             = local.tags
+
+  depends_on = [azurerm_role_assignment.deployer_secrets_officer]
+}
+
+# Application connection: what the web app uses (data access only, no DDL).
+resource "azurerm_key_vault_secret" "postgres_app_connection_string" {
+  name = "postgres-app-connection-string"
+  value_wo = join(";", concat(local.postgres_connection_base, [
+    "Username=${local.postgres_app_role}",
+    "Password=${ephemeral.azurerm_key_vault_secret.postgres_app_password.value}",
+  ]))
+  key_vault_id     = azurerm_key_vault.main.id
+  value_wo_version = var.postgres_password_version
+  content_type     = "text/plain"
+  tags             = local.tags
+
+  depends_on = [azurerm_role_assignment.deployer_secrets_officer]
+}
+
+# Key that wraps the web app's Data Protection key ring (session-cookie keys) stored in Postgres, so a database
+# read alone is not enough to forge a session. The app only wraps/unwraps; the key never leaves Key Vault.
+resource "azurerm_role_assignment" "deployer_crypto_officer" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Crypto Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+  principal_type       = var.deployer_principal_type
+}
+
+resource "azurerm_key_vault_key" "data_protection" {
+  name         = "data-protection"
+  key_vault_id = azurerm_key_vault.main.id
+  key_type     = "RSA"
+  key_size     = 2048
+  key_opts     = ["wrapKey", "unwrapKey"]
+  tags         = local.tags
+
+  depends_on = [azurerm_role_assignment.deployer_crypto_officer]
+}
+
+resource "azurerm_role_assignment" "web_data_protection_key" {
+  scope                = azurerm_key_vault_key.data_protection.resource_versionless_id
+  role_definition_name = "Key Vault Crypto User"
+  principal_id         = azurerm_user_assigned_identity.web.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
 # Per-secret role assignments (not vault-wide): each identity can read exactly the secrets it needs.
 resource "azurerm_role_assignment" "secret_readers" {
   for_each = {
     "web-login"       = { secret = azurerm_key_vault_secret.app_login_password.resource_versionless_id, principal = azurerm_user_assigned_identity.web.principal_id }
-    "web-database"    = { secret = azurerm_key_vault_secret.postgres_connection_string.resource_versionless_id, principal = azurerm_user_assigned_identity.web.principal_id }
+    "web-database"    = { secret = azurerm_key_vault_secret.postgres_app_connection_string.resource_versionless_id, principal = azurerm_user_assigned_identity.web.principal_id }
     "web-temporal"    = { secret = azurerm_key_vault_secret.temporal_api_key.resource_versionless_id, principal = azurerm_user_assigned_identity.web.principal_id }
     "worker-temporal" = { secret = azurerm_key_vault_secret.temporal_api_key.resource_versionless_id, principal = azurerm_user_assigned_identity.worker.principal_id }
     "worker-gemini"   = { secret = azurerm_key_vault_secret.gemini_api_key.resource_versionless_id, principal = azurerm_user_assigned_identity.worker.principal_id }
+    "migrate-admin"   = { secret = azurerm_key_vault_secret.postgres_admin_connection_string.resource_versionless_id, principal = azurerm_user_assigned_identity.migrate.principal_id }
+    "migrate-app-pw"  = { secret = azurerm_key_vault_secret.postgres_app_password.resource_versionless_id, principal = azurerm_user_assigned_identity.migrate.principal_id }
   }
 
   scope                = each.value.secret
@@ -290,15 +378,21 @@ module "web" {
   memory                       = var.web_memory
   tags                         = local.tags
 
-  environment = {
-    ASPNETCORE_ENVIRONMENT          = "Production"
-    Temporal__Address               = var.temporal_address
-    Temporal__Namespace             = var.temporal_namespace
-    Temporal__GameTaskQueue         = "oregon-game"
-    Temporal__WebTaskQueue          = "oregon-web"
-    Proxy__TrustCloudflareHeaders   = "true"
-    Logging__Console__FormatterName = "json"
-  }
+  environment = merge(
+    {
+      ASPNETCORE_ENVIRONMENT                  = "Production"
+      Temporal__Address                       = var.temporal_address
+      Temporal__Namespace                     = var.temporal_namespace
+      Temporal__GameTaskQueue                 = "oregon-game"
+      Temporal__WebTaskQueue                  = "oregon-web"
+      Proxy__TrustCloudflareHeaders           = "true"
+      Logging__Console__FormatterName         = "json"
+      Database__MigrateOnStartup              = "false" # the migrate job does it as the admin
+      DataProtection__KeyVaultKeyId           = azurerm_key_vault_key.data_protection.versionless_id
+      DataProtection__ManagedIdentityClientId = azurerm_user_assigned_identity.web.client_id
+    },
+    local.origin_pull_enabled ? { Proxy__OriginClientCertificateSha256 = local.origin_pull_sha256 } : {},
+  )
 
   key_vault_secrets = {
     "auth-password" = {
@@ -306,7 +400,7 @@ module "web" {
       env_name            = "Auth__Password"
     }
     "database" = {
-      key_vault_secret_id = azurerm_key_vault_secret.postgres_connection_string.versionless_id
+      key_vault_secret_id = azurerm_key_vault_secret.postgres_app_connection_string.versionless_id
       env_name            = "ConnectionStrings__Oregon"
     }
     "temporal-api-key" = {
@@ -318,6 +412,8 @@ module "web" {
   ingress = {
     target_port   = 8080
     allowed_cidrs = var.ingress_allowed_cidrs
+    # Require a client certificate once our Cloudflare origin-pull certificate is pinned; the app checks it's ours.
+    client_certificate_mode = local.origin_pull_enabled ? "require" : null
   }
 
   probes = {
@@ -326,7 +422,8 @@ module "web" {
     readiness_path = "/healthz/ready"
   }
 
-  depends_on = [azurerm_role_assignment.acr_pull, azurerm_role_assignment.secret_readers]
+  # module.dns: Cloudflare must present the origin-pull certificate before the ingress starts requiring one.
+  depends_on = [azurerm_role_assignment.acr_pull, azurerm_role_assignment.secret_readers, azurerm_role_assignment.web_data_protection_key, module.dns]
 }
 
 module "worker" {
@@ -379,6 +476,94 @@ module "dns" {
   target_ip       = azurerm_container_app_environment.main.static_ip_address
   verification_id = azurerm_container_app_environment.main.custom_domain_verification_id
   proxied         = var.cloudflare_proxied
+  min_tls_version = var.cloudflare_min_tls_version
+
+  authenticated_origin_pulls = local.origin_pull_enabled
+}
+
+# -------------------------------------------------------------------------------------------------------------
+# Database migration job: runs `dotnet Oregon.Backend.dll migrate` from the web image, as the database admin,
+# before each web release (scripts/migrate-db.sh, called by scripts/release-web.sh). It applies EF migrations,
+# maintains the least-privilege app role, and deletes session keys that predate Key Vault encryption.
+# -------------------------------------------------------------------------------------------------------------
+resource "azurerm_container_app_job" "migrate" {
+  name                         = "job-${var.name_prefix}-migrate"
+  location                     = azurerm_resource_group.main.location
+  resource_group_name          = azurerm_resource_group.main.name
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  workload_profile_name        = "Consumption"
+  replica_timeout_in_seconds   = 600
+  replica_retry_limit          = 0
+  tags                         = local.tags
+
+  manual_trigger_config {
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.migrate.id]
+  }
+
+  registry {
+    server   = data.azurerm_container_registry.shared.login_server
+    identity = azurerm_user_assigned_identity.migrate.id
+  }
+
+  secret {
+    name                = "database-admin"
+    key_vault_secret_id = azurerm_key_vault_secret.postgres_admin_connection_string.versionless_id
+    identity            = azurerm_user_assigned_identity.migrate.id
+  }
+
+  secret {
+    name                = "app-role-password"
+    key_vault_secret_id = azurerm_key_vault_secret.postgres_app_password.versionless_id
+    identity            = azurerm_user_assigned_identity.migrate.id
+  }
+
+  template {
+    container {
+      name   = "migrate"
+      image  = "${data.azurerm_container_registry.shared.login_server}/${var.web_image_repository}:${var.initial_image_tag}"
+      args   = ["migrate"]
+      cpu    = 0.25
+      memory = "0.5Gi"
+
+      env {
+        name  = "DOTNET_ENVIRONMENT"
+        value = "Production"
+      }
+      env {
+        name  = "Logging__Console__FormatterName"
+        value = "json"
+      }
+      env {
+        name  = "Database__AppRoleName"
+        value = local.postgres_app_role
+      }
+      env {
+        name  = "Database__PurgeUnprotectedDataProtectionKeys"
+        value = "true"
+      }
+      env {
+        name        = "ConnectionStrings__Oregon"
+        secret_name = "database-admin"
+      }
+      env {
+        name        = "Database__AppRolePassword"
+        secret_name = "app-role-password"
+      }
+    }
+  }
+
+  lifecycle {
+    # Releases set the image (scripts/migrate-db.sh), as for the apps.
+    ignore_changes = [template[0].container[0].image]
+  }
+
+  depends_on = [azurerm_role_assignment.acr_pull, azurerm_role_assignment.secret_readers]
 }
 
 resource "azurerm_container_app_custom_domain" "web" {

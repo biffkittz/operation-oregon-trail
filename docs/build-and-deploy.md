@@ -85,11 +85,13 @@ Image notes:
    | `TF_VAR_temporal_api_key` | Temporal Cloud API key with access to `oregon.joqqs` (prefer a service-account key) |
    | `TF_VAR_origin_certificate_password` | password of `infra/.secrets/biffkittz-origin.pfx` |
 
-5. **Cloudflare zone settings** (zone-wide, so set them in the dashboard rather than Terraform):
-   * SSL/TLS mode **Full (strict)** (already set; required because the origin presents the Cloudflare
+5. **Cloudflare zone settings** (zone-wide: they affect every hostname in `biffkittz.com`):
+   * SSL/TLS mode **Full (strict)** (dashboard; already set; required because the origin presents the Cloudflare
      Origin CA certificate).
-   * WebSockets **On** (already on; SignalR needs it).
-   * Recommended: **Always Use HTTPS** on and **Minimum TLS Version 1.2** (both currently at their defaults).
+   * WebSockets **On** (dashboard; already on; SignalR needs it).
+   * **Minimum TLS Version 1.2** (Terraform, `cloudflare_min_tls_version`; TLS 1.3 stays on). The Cloudflare token
+     needs **Zone Settings: Edit** on the zone for this, in addition to Zone: Read and DNS: Edit.
+   * Recommended: **Always Use HTTPS** on (dashboard; currently at its default).
 
 ## 3. First deployment
 
@@ -109,10 +111,10 @@ terraform apply -var-file=environments/prod.tfvars
 ```
 
 `terraform apply` takes roughly 15-25 minutes (the VNet-integrated environment and PostgreSQL are the slow
-parts). It creates 33 resources: resource group, VNet and subnets, private DNS, Log Analytics, two managed
-identities with `AcrPull`, Key Vault with five secrets and per-secret RBAC, PostgreSQL B1ms with a private
-endpoint, the Container Apps environment, the origin certificate, both apps, the Cloudflare DNS records and the
-custom-domain binding.
+parts). It creates the resource group, VNet and subnets, private DNS, Log Analytics, three managed identities (web,
+worker, migrate job) with `AcrPull`, Key Vault with its secrets, the `data-protection` key and per-secret/per-key
+RBAC, PostgreSQL B1ms with a private endpoint, the Container Apps environment, the origin certificate, both apps,
+the migrate job, the Cloudflare DNS records and zone settings, and the custom-domain binding.
 
 > **If the first apply fails with a 403 on a Key Vault secret**, Azure RBAC was still propagating the
 > operator's role assignment. Wait a minute and run `terraform apply` again. This is safe: the PostgreSQL password
@@ -125,9 +127,15 @@ terraform output
 curl -fsS https://oregon.biffkittz.com/healthz/ready     # "Healthy"
 ```
 
-Then open https://oregon.biffkittz.com and log in with `TF_VAR_app_login_password`. On its first start the web app
-applies the EF Core migrations (nothing outside the VNet can reach the database, so the app migrates itself; the
-startup probe allows five minutes).
+Then create the schema and the app's database role, and roll the web app onto the new image:
+
+```bash
+scripts/release-web.sh      # runs the migrate job (schema + oregon_app role) before rolling out the web app
+```
+
+The web app connects as the least-privilege `oregon_app` role and never runs migrations; until the migrate job has
+run once, its readiness check fails because the role doesn't exist yet. Then open https://oregon.biffkittz.com and
+log in with `TF_VAR_app_login_password`.
 
 ## 4. Releasing changes
 
@@ -139,6 +147,13 @@ scripts/release-worker.sh    # workflow, game rule or LLM changes (read the next
 Each script builds the image in ACR (`az acr build`, no local Docker needed; add `--local` to build locally),
 pushes `:<git-sha>` and `:latest`, runs `az containerapp update` and waits until the new revision is running. Tags
 end in `-dirty` when the working tree has uncommitted changes.
+
+**Database migrations** run in the Container Apps job `job-oregon-migrate` (the web image with the `migrate`
+argument), as the database admin, *before* the web rollout: `release-web.sh` calls `scripts/migrate-db.sh` with the
+new image and stops if it fails. The job applies EF Core migrations, creates/updates the `oregon_app` role (data
+access only; no CREATE/ALTER/DROP/TRUNCATE; its password is sent as a SCRAM verifier) and deletes session keys that
+predate Key Vault encryption. Run it alone with `scripts/migrate-db.sh [--tag <tag>]`. Migrations must stay
+backward compatible with the running web revision (add columns/tables first, remove them a release later).
 
 Terraform ignores the image of both apps (`lifecycle.ignore_changes`), so `terraform apply` never rolls back a
 release. **Rollback**: `az containerapp update -n ca-oregon-web -g rg-oregon --image
@@ -171,11 +186,33 @@ Gemini keys).
 | Rotate | How |
 |---|---|
 | Login password, Gemini key, Temporal key | update `infra/.secrets/secrets.env`, bump `secret_values_version`, `terraform apply`, then restart: `az containerapp revision restart -n <app> -g rg-oregon --revision <name>` |
-| PostgreSQL password | bump `postgres_password_version` and apply (server and connection string change together), then restart the web app |
+| PostgreSQL passwords (admin and `oregon_app`) | bump `postgres_password_version` and apply (server, both passwords and both connection strings change together), run `scripts/migrate-db.sh` (sets the new app-role password), then restart the web app |
+| Origin-pull client certificate | `scripts/cloudflare-origin-pull.sh --rotate`, put the new thumbprint in `origin_pull_certificate_sha256`, apply. Cloudflare switches to the newest active certificate, so expect a minute of 403s between the switch and the apply; delete the old certificate in Cloudflare afterwards |
+| Data Protection key (`data-protection` in Key Vault) | rotate the key in Key Vault; existing key rings still unwrap with the old version |
 | Origin certificate | replace the PFX, bump `origin_certificate_version`, apply |
 
-Data Protection keys (which sign the session cookies) are stored in PostgreSQL, so sessions survive restarts and
-new revisions.
+Data Protection keys (which sign and encrypt the session cookies) are stored in PostgreSQL, wrapped with the Key
+Vault key `data-protection`, so sessions survive restarts and new revisions but a database read alone can't forge
+one. **Sessions end when the login password changes**: the cookie carries a keyed fingerprint of the password that
+is checked on every request (restarting alone does not log anyone out).
+
+### Hardening switches
+
+* **Least-privilege database role**: the web app connects as `oregon_app` (Key Vault `postgres-app-connection-string`);
+  only the migrate job's identity can read `postgres-admin-connection-string`.
+* **Failed-login brake**: besides 5 attempts/minute per IP, all sign-ins are refused for the rest of the minute once
+  `Auth:MaxFailedLoginsPerMinute` (default 30) failures have happened site-wide.
+* **Cloudflare Authenticated Origin Pulls with our own certificate**: the ingress allow-list admits every Cloudflare
+  customer, so Cloudflare presents a client certificate only our zone has, the ingress requires a client
+  certificate, and the app checks its SHA-256 thumbprint (`/healthz` is exempt for platform probes). To enable:
+  1. Give the Cloudflare token **SSL and Certificates: Edit** on the zone.
+  2. `source infra/.secrets/secrets.env && scripts/cloudflare-origin-pull.sh` (generates the certificate in
+     `infra/.secrets/origin-pull/`, uploads it, waits until it's active, prints the thumbprint).
+  3. Release the web app (the image must contain the thumbprint check), then set
+     `origin_pull_certificate_sha256` in `infra/environments/prod.tfvars` and apply. Terraform enables Authenticated
+     Origin Pulls in Cloudflare before the ingress starts requiring a certificate.
+  4. Check: `curl -s -o /dev/null -w '%{http_code}' https://oregon.biffkittz.com/api/auth/session` returns 200
+     through Cloudflare; requests to the static IP or the default `*.azurecontainerapps.io` host fail.
 
 ## 7. Observing production
 
@@ -203,5 +240,5 @@ in the shared registry.
   secrets).
 * **Replay tests in CI**: export a few production histories (`temporal workflow show --output json`) and replay
   them against new worker builds with `WorkflowReplayer` before releasing.
-* **Scale-out**: more than one web replica would need a SignalR backplane (Azure SignalR Service or Redis) and
-  migrations moved to a deployment job.
+* **Scale-out**: more than one web replica would need a SignalR backplane (Azure SignalR Service or Redis) and a
+  shared store for the failed-login brake (it is per replica).

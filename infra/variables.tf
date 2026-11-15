@@ -144,6 +144,33 @@ variable "cloudflare_proxied" {
   default     = true
 }
 
+variable "cloudflare_min_tls_version" {
+  description = "Minimum TLS version at Cloudflare's edge. Zone-wide: affects every hostname in cloudflare_zone_name. TLS 1.3 remains enabled."
+  type        = string
+  default     = "1.2"
+
+  validation {
+    condition     = contains(["1.0", "1.1", "1.2", "1.3"], var.cloudflare_min_tls_version)
+    error_message = "cloudflare_min_tls_version must be one of 1.0, 1.1, 1.2, 1.3."
+  }
+}
+
+variable "origin_pull_certificate_sha256" {
+  description = <<-EOT
+    SHA-256 thumbprint of our own Cloudflare origin-pull client certificate, as printed by
+    scripts/cloudflare-origin-pull.sh (which generates it and uploads it to Cloudflare; its private key never enters
+    Terraform). When set: Cloudflare Authenticated Origin Pulls are enabled for the zone, the web ingress requires a
+    client certificate, and the app refuses requests that don't present this one. null = off. Not a secret.
+  EOT
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.origin_pull_certificate_sha256 == null || can(regex("^[0-9A-Fa-f]{64}$", replace(replace(coalesce(var.origin_pull_certificate_sha256, "x"), ":", ""), " ", "")))
+    error_message = "origin_pull_certificate_sha256 must be a SHA-256 thumbprint (64 hex digits, colons allowed)."
+  }
+}
+
 variable "origin_certificate_path" {
   description = "Path (relative to infra/) of the password-protected Cloudflare Origin CA certificate (PFX)."
   type        = string

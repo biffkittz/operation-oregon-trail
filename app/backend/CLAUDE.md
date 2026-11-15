@@ -48,7 +48,16 @@ JSON API under `/api`, the SignalR hub at `/hubs/game` and health checks under `
 ## Security checklist (keep it true)
 
 * Session cookie: HttpOnly, SameSite=Strict, `__Host-` prefix and Secure outside Development. API returns 401
-  rather than redirecting.
+  rather than redirecting. It carries a keyed fingerprint of the password (`IPasswordVerifier.SessionStamp`),
+  checked on every request by `AuthEndpoints.ValidateSessionAsync`: changing the password ends all sessions.
+* Failed sign-ins are capped site-wide (`LoginThrottle`, `Auth:MaxFailedLoginsPerMinute`, default 30) on top of the
+  per-IP rate limit; while engaged, every sign-in gets 429.
+* Production connects to Postgres as the least-privilege `oregon_app` role (no DDL). Migrations run in the
+  `migrate` command (`Data/DatabaseSetup.cs`, `dotnet Oregon.Backend.dll migrate`) from the migrate job, as the
+  admin; `Database:MigrateOnStartup` is false in Azure. Keep migrations compatible with the previous release.
+* The Data Protection key ring is wrapped with a Key Vault key when `DataProtection:KeyVaultKeyId` is set.
+* `OriginCertificateMiddleware` refuses requests whose forwarded client certificate isn't our Cloudflare
+  origin-pull certificate when `Proxy:OriginClientCertificateSha256` is set (`/healthz` exempt).
 * Rate limits: `login` 5/min/IP, `commands` 60/min, `story-seeds` 10/min. The client IP comes from
   `CF-Connecting-IP` only when `Proxy:TrustCloudflareHeaders=true` (production, where ingress allows only
   Cloudflare).
@@ -60,10 +69,14 @@ JSON API under `/api`, the SignalR hub at `/hubs/game` and health checks under `
 
 | Key | Dev default | Production source |
 |---|---|---|
-| `ConnectionStrings:Oregon` | local Docker PostgreSQL on 55432 | Key Vault `postgres-connection-string` |
+| `ConnectionStrings:Oregon` | local Docker PostgreSQL on 55432 | Key Vault `postgres-app-connection-string` (role `oregon_app`) |
 | `Auth:Password` | `oregon` | Key Vault `app-login-password` |
 | `Temporal:Address` / `Namespace` / `ApiKey` | `localhost:7233` / `default` / - | `us-east-2.aws.api.temporal.io:7233` / `oregon.joqqs` / Key Vault `temporal-api-key` |
 | `Proxy:TrustCloudflareHeaders` | `false` | `true` |
+| `Proxy:OriginClientCertificateSha256` | - | Terraform `origin_pull_certificate_sha256` |
+| `Database:MigrateOnStartup` | `true` | `false` (migrate job) |
+| `DataProtection:KeyVaultKeyId` / `ManagedIdentityClientId` | - | Key Vault key `data-protection` / web identity |
+| `Auth:MaxFailedLoginsPerMinute` | `30` | `30` |
 
 ## Tests
 

@@ -81,6 +81,9 @@ variable "ingress" {
   type = object({
     target_port   = number
     allowed_cidrs = list(string)
+    # "require" | "accept" | "ignore"; null leaves the platform default. Requiring a certificate only checks that
+    # one is presented: the app must validate it (X-Forwarded-Client-Cert).
+    client_certificate_mode = optional(string)
   })
   default = null
 }
