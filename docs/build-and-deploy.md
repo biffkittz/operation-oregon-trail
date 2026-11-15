@@ -172,7 +172,7 @@ ignored, **or mode-only changes**. The image then doesn't correspond to any comm
 
 | `git status` shows | Cause | Fix |
 |---|---|---|
-| `M file` with `old mode 100644 new mode 100755` in `git diff` | a commit made from a Windows tool dropped the executable bit | `git add --chmod=+x <file>` and commit; CI fails on this now |
+| `M file` with `old mode 100644 new mode 100755` in `git diff` | a commit made from a Windows git client (e.g. GitKraken on Windows) dropped the executable bit: it sees WSL files without Linux permissions and commits them as 100644 | once per clone: `git config core.fileMode false` (git then ignores the bit on disk and keeps the recorded one); then `git add --chmod=+x <file>` and commit. New scripts always need `--chmod=+x`; CI fails if one is missing |
 | ` M` on files you didn't edit, diff is all line endings | CRLF written by a Windows tool | `.gitattributes` forces LF; `git add --renormalize .` and commit |
 | `??` new files | not committed yet | commit them, or add them to `.gitignore` |
 | your own work in progress | not ready to release | `git stash -u`, deploy, `git stash pop`; or `scripts/deploy.sh --ref origin/main` |

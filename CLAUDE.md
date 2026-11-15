@@ -71,6 +71,7 @@ namespace `oregon.joqqs`, regional endpoint `us-east-2.aws.api.temporal.io:7233`
 * The Windows `az` from WSL emits CRLF; scripts use `azq` (strips `\r`). Use the Linux Azure CLI with its own
   `~/.azure` (not a symlink to the Windows profile); `deploy.sh` refuses the Windows one.
 * Commit from WSL: Windows git tools drop the executable bit on scripts (CI checks it) and can introduce CRLF
-  (`.gitattributes` forces LF).
+  (`.gitattributes` forces LF). This clone uses `core.fileMode=false` so a Windows client can't flip the bit;
+  add new scripts with `git add --chmod=+x`.
 * `dotnet test` runs on Microsoft Testing Platform (opted in via `global.json`); filters go after `--`, e.g.
   `dotnet test --project worker/Oregon.Worker.Tests -- --filter-class "<Class>"`.
