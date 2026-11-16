@@ -70,6 +70,7 @@ flowchart LR
 | [docs/build-and-deploy.md](docs/build-and-deploy.md) | Building each project, container images, first Azure deployment, releases, secrets rotation |
 | [docs/architecture.md](docs/architecture.md) | Components, data flow, Temporal design, LLM integration, security model, design decisions |
 | [docs/game-design.md](docs/game-design.md) | Setting, game loop, stats, encounters, difficulty and balance |
+| [docs/observability.md](docs/observability.md) | Monitoring, alerting and tracing: findings and open decisions (not implemented yet) |
 | [infra/README.md](infra/README.md) | Terraform layout, variables, outputs |
 | `CLAUDE.md` files | Conventions and gotchas per project (root, `app/frontend`, `app/backend`, `worker`, `infra`) |
 
