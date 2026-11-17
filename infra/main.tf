@@ -422,7 +422,8 @@ module "web" {
     readiness_path = "/healthz/ready"
   }
 
-  # module.dns: Cloudflare must present the origin-pull certificate before the ingress starts requiring one.
+  # module.dns: the proxied record exists first. The origin-pull certificate must already be attached to the hostname
+  # (scripts/cloudflare-origin-pull.sh) before the ingress starts requiring one.
   depends_on = [azurerm_role_assignment.acr_pull, azurerm_role_assignment.secret_readers, azurerm_role_assignment.web_data_protection_key, module.dns]
 }
 
@@ -477,9 +478,8 @@ module "dns" {
   verification_id = azurerm_container_app_environment.main.custom_domain_verification_id
   proxied         = var.cloudflare_proxied
   min_tls_version = var.cloudflare_min_tls_version
-
-  authenticated_origin_pulls = local.origin_pull_enabled
 }
+
 
 # -------------------------------------------------------------------------------------------------------------
 # Database migration job: runs `dotnet Oregon.Backend.dll migrate` from the web image, as the database admin,
