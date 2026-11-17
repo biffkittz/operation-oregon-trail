@@ -34,9 +34,3 @@ variable "min_tls_version" {
     error_message = "min_tls_version must be one of 1.0, 1.1, 1.2, 1.3."
   }
 }
-
-variable "authenticated_origin_pulls" {
-  description = "Enable zone-level Authenticated Origin Pulls (upload the zone certificate first)."
-  type        = bool
-  default     = false
-}

@@ -7,7 +7,7 @@ namespace Oregon.Backend.Infrastructure;
 
 /// <summary>
 /// Accepts a request only if it arrived through Cloudflare for <b>our</b> zone: Cloudflare presents our own origin
-/// pull client certificate (zone-level Authenticated Origin Pulls), the Container Apps ingress requires a client
+/// pull client certificate (per-hostname Authenticated Origin Pulls), the Container Apps ingress requires a client
 /// certificate and forwards it in <c>X-Forwarded-Client-Cert</c>, and this middleware compares its SHA-256
 /// thumbprint with <see cref="ProxySettings.OriginClientCertificateSha256"/>.
 /// </summary>

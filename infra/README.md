@@ -53,7 +53,7 @@ flowchart LR
 | `modules/network` | VNet, delegated Container Apps subnet, private-endpoint subnet, private DNS zone and link |
 | `modules/postgres` | Flexible server (B1ms), database, private endpoint with DNS zone group |
 | `modules/container_app` | One Container App: identity, ACR pull, Key Vault references, optional ingress (IP allow-list, client-certificate mode) and probes. Used twice. |
-| `modules/cloudflare_dns` | Verification TXT, proxied A record, zone minimum TLS version, Authenticated Origin Pulls switch |
+| `modules/cloudflare_dns` | Verification TXT, proxied A record, zone minimum TLS version |
 
 ## Usage
 
@@ -95,9 +95,12 @@ are only re-sent when their `*_version` variable changes.
   Vault RSA key `data-protection`; the web identity has `Key Vault Crypto User` on that key only. The operator gets
   `Key Vault Crypto Officer` on the vault to create it.
 * **Our zone only (Authenticated Origin Pulls).** The Cloudflare IP allow-list admits every Cloudflare customer.
-  With `origin_pull_certificate_sha256` set, Cloudflare presents our own client certificate (uploaded by
-  `scripts/cloudflare-origin-pull.sh`, outside Terraform, because the Cloudflare certificate resources would keep
-  its private key in state), the web ingress requires a client certificate, and the app pins the thumbprint.
+  With `origin_pull_certificate_sha256` set, Cloudflare presents our own client certificate (attached to our
+  hostname only, per-hostname, by `scripts/cloudflare-origin-pull.sh`, outside Terraform, because the Cloudflare
+  certificate resources would keep its private key in state), the web ingress requires a client certificate, and
+  the app pins the thumbprint. Not zone-level: a zone-level certificate replaces Cloudflare's global one for every
+  hostname in the shared zone, and other apps there pin the global one. Zone-level AOP must stay off for the same
+  reason: switched on without a certificate, Cloudflare presents no certificate at all to the other hostnames.
 * **Cloudflare-only ingress.** `ingress_allowed_cidrs` defaults to Cloudflare's published IPv4 ranges. Update it if
   Cloudflare publishes changes (https://www.cloudflare.com/ips-v4).
 * **Least privilege.** Separate user-assigned identities per app, `Key Vault Secrets User` granted per secret

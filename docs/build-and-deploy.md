@@ -270,7 +270,7 @@ Gemini keys).
 |---|---|
 | Login password, Gemini key, Temporal key | update `infra/.secrets/secrets.env`, bump `secret_values_version`, `terraform apply`, then restart: `az containerapp revision restart -n <app> -g rg-oregon --revision <name>` |
 | PostgreSQL passwords (admin and `oregon_app`) | bump `postgres_password_version` and apply (server, both passwords and both connection strings change together), run `scripts/migrate-db.sh` (sets the new app-role password), then restart the web app |
-| Origin-pull client certificate | `scripts/cloudflare-origin-pull.sh --rotate`, put the new thumbprint in `origin_pull_certificate_sha256`, apply. Cloudflare switches to the newest active certificate, so expect a minute of 403s between the switch and the apply; delete the old certificate in Cloudflare afterwards |
+| Origin-pull client certificate | `scripts/cloudflare-origin-pull.sh --rotate` (attaches the new certificate to the hostname and deletes the old one), put the new thumbprint in `origin_pull_certificate_sha256`, apply. Expect a minute of 403s between the switch and the apply |
 | Data Protection key (`data-protection` in Key Vault) | rotate the key in Key Vault; existing key rings still unwrap with the old version |
 | Origin certificate | replace the PFX, bump `origin_certificate_version`, apply |
 
@@ -290,10 +290,16 @@ is checked on every request (restarting alone does not log anyone out).
   certificate, and the app checks its SHA-256 thumbprint (`/healthz` is exempt for platform probes). To enable:
   1. Give the Cloudflare token **SSL and Certificates: Edit** on the zone.
   2. `source infra/.secrets/secrets.env && scripts/cloudflare-origin-pull.sh` (generates the certificate in
-     `infra/.secrets/origin-pull/`, uploads it, waits until it's active, prints the thumbprint).
+     `infra/.secrets/origin-pull/`, uploads it as a **per-hostname** certificate for `oregon.biffkittz.com`, waits
+     until it's active, prints the thumbprint). Never upload it at the zone level: the zone is shared, and a
+     zone-level certificate replaces Cloudflare's global one for every other hostname, whose apps then refuse
+     Cloudflare (this took app. and grocery.biffkittz.com down on 2026-11-15). The script removes ours from the
+     zone level if it finds it there.
   3. Release the web app (the image must contain the thumbprint check), then set
-     `origin_pull_certificate_sha256` in `infra/environments/prod.tfvars` and apply. Terraform enables Authenticated
-     Origin Pulls in Cloudflare before the ingress starts requiring a certificate.
+     `origin_pull_certificate_sha256` in `infra/environments/prod.tfvars` and apply; the ingress then requires a
+     client certificate. Per-hostname certificates need neither switch, and Oregon's Terraform touches neither:
+     **zone-level** AOP must stay off (on, it overrides the global certificate for every hostname in the zone,
+     with no certificate at all if none is uploaded), and the **global** switch belongs to another app in the zone.
   4. Check: `curl -s -o /dev/null -w '%{http_code}' https://oregon.biffkittz.com/api/auth/session` returns 200
      through Cloudflare; requests to the static IP or the default `*.azurecontainerapps.io` host fail.
 

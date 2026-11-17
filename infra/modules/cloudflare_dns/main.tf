@@ -39,12 +39,3 @@ resource "cloudflare_zone_setting" "min_tls_version" {
   setting_id = "min_tls_version"
   value      = var.min_tls_version
 }
-
-# Zone-level Authenticated Origin Pulls: Cloudflare presents a client certificate to origins. With our own
-# certificate uploaded (scripts/cloudflare-origin-pull.sh) it presents that one, which only our zone has; the app
-# pins its thumbprint. Origins that don't ask for a client certificate (other hostnames in the zone) are unaffected.
-resource "cloudflare_authenticated_origin_pulls_settings" "this" {
-  count   = var.authenticated_origin_pulls ? 1 : 0
-  zone_id = data.cloudflare_zone.this.id
-  enabled = true
-}
