@@ -118,7 +118,7 @@ release_image() {
 
   require_cmd az "Install the Azure CLI."
   az account show >/dev/null 2>&1 || die "Not logged in to Azure. Run 'az login' first."
-  [[ -z "$tag" ]] && tag="$(image_tag)"
+  [[ -z "$tag" ]] && tag="$(image_tag "$REPO_ROOT")"
   [[ "$tag" == *-dirty ]] && warn "Working tree has uncommitted changes; tagging as $tag. scripts/deploy.sh refuses this."
 
   build_image "$image" "$dockerfile" "$tag" "$local_build"
